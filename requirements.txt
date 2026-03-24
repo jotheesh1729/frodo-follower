@@ -1,0 +1,22 @@
+# Core
+torch>=2.0
+torchvision>=0.15
+numpy<2
+opencv-python-headless>=4.9
+Pillow>=10.0
+ultralytics>=8.0
+
+# SDK server
+fastapi==0.111.1
+hypercorn==0.17.3
+pydantic>=2.0
+pyppeteer==2.0.0
+python-dotenv>=1.0
+requests>=2.31
+aiohttp>=3.9
+
+# Visualization
+matplotlib>=3.7
+
+# Optional: ROS2 (install separately via apt)
+# ros-jazzy-desktop

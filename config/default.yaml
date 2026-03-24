@@ -1,0 +1,29 @@
+# Frodo-AI Default Configuration
+
+sdk:
+  url: "http://localhost:8000"
+  timeout: 5.0
+
+perception:
+  yolo_model: "yolo11m.pt"
+  yolo_confidence: 0.2
+  depth_model: "small"       # small, base, large
+  depth_max: 10.0
+  depth_device: "auto"       # auto, cuda, cpu
+
+planning:
+  mppi_samples: 512
+  mppi_horizon: 12
+  mppi_dt: 0.15
+
+control:
+  max_linear: 0.30
+  max_angular: 0.45
+  steer_gain: 0.35
+  arrival_distance: 0.8
+  slowdown_distance: 2.0
+
+camera:
+  fov_horizontal: 90.0
+  width: 640
+  height: 480

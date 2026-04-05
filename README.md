@@ -17,19 +17,33 @@ Built for the [FrodoBots Earth Rover Challenge](https://www.frodobots.com/erc).
 
 **"Go to the chair"** — natural language object navigation
 
-https://github.com/tarunkumarnyu/frodo-ai/raw/main/assets/demos/frodo_chair.mp4
+
+https://github.com/user-attachments/assets/bd51aed4-1628-48da-b842-15a2e5776b1b
+
+
 
 **"Go to the person"** — human target tracking
 
-https://github.com/tarunkumarnyu/frodo-ai/raw/main/assets/demos/frodo_person.mp4
+
+https://github.com/user-attachments/assets/8ffeb659-7b90-401f-a34a-0e56bf7467e0
+
+
+
 
 **Obstacle avoidance** — depth-based collision prevention
 
-https://github.com/tarunkumarnyu/frodo-ai/raw/main/assets/demos/frodo_obs.mp4
+
+https://github.com/user-attachments/assets/c3eca453-9161-42fc-9d32-ce3f971de85a
+
+
 
 **"Go to the person" + obstacle avoidance** — combined navigation
 
-https://github.com/tarunkumarnyu/frodo-ai/raw/main/assets/demos/frodo_person_obstacle.mp4
+
+
+https://github.com/user-attachments/assets/b140a3c0-7449-421b-a70d-6e6f2073b25b
+
+
 
 ## System Architecture
 

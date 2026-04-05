@@ -15,33 +15,37 @@ Built for the [FrodoBots Earth Rover Challenge](https://www.frodobots.com/erc).
 
 ## Demo
 
-**"Go to the chair"** — natural language object navigation
+<p align="center"><b>"Go to the chair"</b> — natural language object navigation</p>
 
+<p align="center">
 
 https://github.com/user-attachments/assets/bd51aed4-1628-48da-b842-15a2e5776b1b
 
+</p>
 
+<p align="center"><b>"Go to the person"</b> — human target tracking</p>
 
-**"Go to the person"** — human target tracking
-
+<p align="center">
 
 https://github.com/user-attachments/assets/8ffeb659-7b90-401f-a34a-0e56bf7467e0
 
+</p>
 
+<p align="center"><b>Obstacle avoidance</b> — depth-based collision prevention</p>
 
-
-**Obstacle avoidance** — depth-based collision prevention
-
+<p align="center">
 
 https://github.com/user-attachments/assets/c3eca453-9161-42fc-9d32-ce3f971de85a
 
+</p>
 
+<p align="center"><b>"Go to the person" + obstacle avoidance</b> — combined navigation</p>
 
-**"Go to the person" + obstacle avoidance** — combined navigation
-
-
+<p align="center">
 
 https://github.com/user-attachments/assets/b140a3c0-7449-421b-a70d-6e6f2073b25b
+
+</p>
 
 
 

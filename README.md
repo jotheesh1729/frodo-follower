@@ -2,13 +2,14 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)
+![TensorRT](https://img.shields.io/badge/TensorRT-Optimized-76B900?logo=nvidia&logoColor=white)
 ![YOLO](https://img.shields.io/badge/YOLO-v11m-00FFFF)
 ![Depth Anything V2](https://img.shields.io/badge/Depth-Anything%20V2-blueviolet)
 ![MPPI](https://img.shields.io/badge/MPPI-Planner-green)
 ![ROS2](https://img.shields.io/badge/ROS2-Jazzy-blue?logo=ros&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
-Autonomous navigation system for the [FrodoBots Earth Rover](https://frodobots.com/) platform. Tell the robot where to go in plain English — it detects the target with YOLO, estimates depth with Depth Anything V2, plans collision-free trajectories with MPPI, and drives there using visual servoing. No maps, no LiDAR, no LLM — just vision.
+Autonomous navigation system for the [FrodoBots Earth Rover](https://frodobots.com/) platform. Tell the robot where to go in plain English — it detects the target with YOLO, estimates depth with Depth Anything V2, plans collision-free trajectories with MPPI, and drives there using visual servoing. Both models are exported to TensorRT FP16 engines for real-time inference on VRAM. No maps, no LiDAR, no LLM — just vision.
 
 Built for the [FrodoBots Earth Rover Challenge](https://www.frodobots.com/erc).
 
@@ -27,9 +28,9 @@ Built for the [FrodoBots Earth Rover Challenge](https://www.frodobots.com/erc).
 ## How It Works
 
 **Perception — What's out there?**
-1. YOLO 11m runs object detection at ~15 ms per frame on GPU, detecting 80+ COCO classes
+1. YOLO 11m runs object detection at ~8 ms per frame via TensorRT FP16, detecting 80+ COCO classes
 2. Natural language commands are parsed into YOLO class names via fuzzy matching and alias resolution — no LLM required
-3. Depth Anything V2 (Small) produces metric monocular depth maps at ~68 ms, giving distance to every pixel in the scene
+3. Depth Anything V2 (Small) produces metric monocular depth maps at ~30 ms via TensorRT FP16, giving distance to every pixel in the scene
 
 **Planning — Where to go?**
 1. MPPI (Model Predictive Path Integral) samples 512 candidate trajectories over a 12-step horizon
@@ -49,13 +50,15 @@ Built for the [FrodoBots Earth Rover Challenge](https://www.frodobots.com/erc).
 
 ## Pipeline Latency
 
+Benchmarked on ASUS ROG Strix with RTX 4080 (12 GB VRAM), TensorRT FP16 engines.
+
 | Component | Latency | Device |
 |-----------|---------|--------|
-| YOLO 11m detection | ~15 ms | GPU |
-| Depth Anything V2 (Small) | ~68 ms | GPU |
+| YOLO 11m detection (TensorRT FP16) | ~8 ms | GPU |
+| Depth Anything V2 Small (TensorRT FP16) | ~30 ms | GPU |
 | MPPI planning (512 samples) | ~6 ms | CPU |
 | Visual servo + control | <1 ms | CPU |
-| **Total pipeline** | **~90 ms** | **Mixed** |
+| **Total pipeline** | **~45 ms** | **Mixed** |
 
 ## Project Structure
 
@@ -146,7 +149,7 @@ python scripts/mapper_3d.py
 | Robot | FrodoBots Earth Rover (Mini/Zero) | Mobile platform |
 | Camera | Wide-angle front camera (90° FOV) | Visual perception |
 | Sensors | GPS, IMU (accel/gyro/mag), wheel RPM | Outdoor navigation + odometry |
-| Compute | Laptop with NVIDIA GPU | Inference (tested on RTX 4080) |
+| Compute | ASUS ROG Strix — RTX 4080 (12 GB VRAM) | TensorRT inference for YOLO + DA2 |
 
 ## Scripts
 
@@ -173,7 +176,7 @@ All parameters are tunable in `config/default.yaml`:
 
 ## Stack
 
-`Python` · `PyTorch` · `YOLO 11m` · `Depth Anything V2` · `MPPI` · `OpenCV` · `ROS 2 Jazzy` · `FrodoBot SDK` · `Flask-free Web UI`
+`Python` · `PyTorch` · `TensorRT FP16` · `YOLO 11m` · `Depth Anything V2` · `MPPI` · `OpenCV` · `ROS 2 Jazzy` · `FrodoBot SDK` · `ASUS ROG Strix RTX 4080`
 
 ## License
 

@@ -71,13 +71,13 @@
   <rect x="55" y="255" width="220" height="70" rx="8" fill="#0f1a2e" stroke="#4a7ab0" stroke-width="1"/>
   <text x="165" y="278" text-anchor="middle" fill="#8ab4e0" font-size="13" font-weight="600">YOLO 11m</text>
   <text x="165" y="295" text-anchor="middle" fill="#6a8ab0" font-size="11">Object Detection (80 classes)</text>
-  <text x="165" y="312" text-anchor="middle" fill="#4a6a90" font-size="10">~15 ms · GPU</text>
+  <text x="165" y="312" text-anchor="middle" fill="#76B900" font-size="10">~8 ms · TensorRT FP16</text>
 
   <!-- DA2 Box -->
   <rect x="300" y="255" width="220" height="70" rx="8" fill="#0f1a2e" stroke="#4a7ab0" stroke-width="1"/>
   <text x="410" y="278" text-anchor="middle" fill="#8ab4e0" font-size="13" font-weight="600">Depth Anything V2</text>
   <text x="410" y="295" text-anchor="middle" fill="#6a8ab0" font-size="11">Monocular Metric Depth</text>
-  <text x="410" y="312" text-anchor="middle" fill="#4a6a90" font-size="10">~68 ms · GPU</text>
+  <text x="410" y="312" text-anchor="middle" fill="#76B900" font-size="10">~30 ms · TensorRT FP16</text>
 
   <!-- Outputs under perception -->
   <rect x="55" y="340" width="120" height="32" rx="5" fill="#0a1220" stroke="#3a5a8a" stroke-width="0.8"/>
@@ -196,8 +196,9 @@
 
   <!-- ═══════════════ ROBOT (bottom) ═══════════════ -->
   <rect x="360" y="600" width="380" height="55" rx="28" fill="#1a1a2e" stroke="#e94560" stroke-width="1.5" filter="url(#shadow)"/>
-  <text x="550" y="625" text-anchor="middle" fill="#e0e0e0" font-size="15" font-weight="600">FrodoBots Earth Rover</text>
-  <text x="550" y="643" text-anchor="middle" fill="#888" font-size="11">Camera · GPS · IMU · Wheel Encoders</text>
+  <text x="550" y="622" text-anchor="middle" fill="#e0e0e0" font-size="15" font-weight="600">FrodoBots Earth Rover</text>
+  <text x="550" y="638" text-anchor="middle" fill="#888" font-size="11">Camera · GPS · IMU · Wheel Encoders</text>
+  <text x="550" y="652" text-anchor="middle" fill="#76B900" font-size="9">ASUS ROG Strix · RTX 4080 · TensorRT FP16</text>
 
   <!-- SDK → Robot -->
   <line x1="805" y1="535" x2="805" y2="575" stroke="#d4a030" stroke-width="1.5" fill="none"/>

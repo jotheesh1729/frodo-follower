@@ -1,0 +1,242 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 720" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f1923"/>
+      <stop offset="100%" stop-color="#0a1018"/>
+    </linearGradient>
+    <linearGradient id="perceptionGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a2a4a"/>
+      <stop offset="100%" stop-color="#152040"/>
+    </linearGradient>
+    <linearGradient id="planningGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a3a2a"/>
+      <stop offset="100%" stop-color="#152e22"/>
+    </linearGradient>
+    <linearGradient id="controlGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3a1a2a"/>
+      <stop offset="100%" stop-color="#2e1522"/>
+    </linearGradient>
+    <linearGradient id="interfaceGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a2a1a"/>
+      <stop offset="100%" stop-color="#222215"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4a6a9a"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4a9a6a"/>
+    </marker>
+    <marker id="arrowRed" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e94560"/>
+    </marker>
+    <marker id="arrowYellow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#d4a030"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="720" fill="url(#bgGrad)" rx="12"/>
+
+  <!-- Title -->
+  <text x="550" y="38" text-anchor="middle" fill="#e94560" font-size="22" font-weight="700" letter-spacing="2">FRODO-AI SYSTEM ARCHITECTURE</text>
+  <text x="550" y="58" text-anchor="middle" fill="#667" font-size="12" letter-spacing="1">Natural Language → Object Detection → Depth Estimation → Trajectory Planning → Motor Control</text>
+
+  <!-- ═══════════════ USER INPUT (top) ═══════════════ -->
+  <rect x="400" y="75" width="300" height="48" rx="24" fill="#1a1a2e" stroke="#e94560" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="550" y="100" text-anchor="middle" fill="#e94560" font-size="15" font-weight="600">"go to the chair"</text>
+  <text x="550" y="115" text-anchor="middle" fill="#888" font-size="10">Natural Language Command</text>
+
+  <!-- Arrow from user to NLP -->
+  <line x1="550" y1="123" x2="550" y2="148" stroke="#e94560" stroke-width="1.5" marker-end="url(#arrowRed)"/>
+
+  <!-- ═══════════════ NLP PARSER ═══════════════ -->
+  <rect x="440" y="150" width="220" height="36" rx="6" fill="#2a1530" stroke="#c050a0" stroke-width="1" filter="url(#shadow)"/>
+  <text x="550" y="172" text-anchor="middle" fill="#e0b0d0" font-size="13" font-weight="600">NLP Parser + Fuzzy Match</text>
+
+  <!-- Arrow from NLP to YOLO -->
+  <line x1="550" y1="186" x2="550" y2="210" stroke="#c050a0" stroke-width="1.5" marker-end="url(#arrowRed)"/>
+
+  <!-- ═══════════════ PERCEPTION SECTION ═══════════════ -->
+  <rect x="30" y="215" width="520" height="200" rx="10" fill="url(#perceptionGrad)" stroke="#3a5a8a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="50" y="240" fill="#6a9ad0" font-size="14" font-weight="700" letter-spacing="1">PERCEPTION</text>
+
+  <!-- YOLO Box -->
+  <rect x="55" y="255" width="220" height="70" rx="8" fill="#0f1a2e" stroke="#4a7ab0" stroke-width="1"/>
+  <text x="165" y="278" text-anchor="middle" fill="#8ab4e0" font-size="13" font-weight="600">YOLO 11m</text>
+  <text x="165" y="295" text-anchor="middle" fill="#6a8ab0" font-size="11">Object Detection (80 classes)</text>
+  <text x="165" y="312" text-anchor="middle" fill="#4a6a90" font-size="10">~15 ms · GPU</text>
+
+  <!-- DA2 Box -->
+  <rect x="300" y="255" width="220" height="70" rx="8" fill="#0f1a2e" stroke="#4a7ab0" stroke-width="1"/>
+  <text x="410" y="278" text-anchor="middle" fill="#8ab4e0" font-size="13" font-weight="600">Depth Anything V2</text>
+  <text x="410" y="295" text-anchor="middle" fill="#6a8ab0" font-size="11">Monocular Metric Depth</text>
+  <text x="410" y="312" text-anchor="middle" fill="#4a6a90" font-size="10">~68 ms · GPU</text>
+
+  <!-- Outputs under perception -->
+  <rect x="55" y="340" width="120" height="32" rx="5" fill="#0a1220" stroke="#3a5a8a" stroke-width="0.8"/>
+  <text x="115" y="360" text-anchor="middle" fill="#7090b0" font-size="10">target bbox + class</text>
+
+  <rect x="185" y="340" width="100" height="32" rx="5" fill="#0a1220" stroke="#3a5a8a" stroke-width="0.8"/>
+  <text x="235" y="360" text-anchor="middle" fill="#7090b0" font-size="10">target angle</text>
+
+  <rect x="300" y="340" width="100" height="32" rx="5" fill="#0a1220" stroke="#3a5a8a" stroke-width="0.8"/>
+  <text x="350" y="360" text-anchor="middle" fill="#7090b0" font-size="10">depth map (H×W)</text>
+
+  <rect x="415" y="340" width="105" height="32" rx="5" fill="#0a1220" stroke="#3a5a8a" stroke-width="0.8"/>
+  <text x="467" y="360" text-anchor="middle" fill="#7090b0" font-size="10">polar clearance</text>
+
+  <!-- YOLO → outputs -->
+  <line x1="135" y1="325" x2="115" y2="340" stroke="#3a5a8a" stroke-width="0.8"/>
+  <line x1="195" y1="325" x2="235" y2="340" stroke="#3a5a8a" stroke-width="0.8"/>
+  <!-- DA2 → outputs -->
+  <line x1="380" y1="325" x2="350" y2="340" stroke="#3a5a8a" stroke-width="0.8"/>
+  <line x1="440" y1="325" x2="467" y2="340" stroke="#3a5a8a" stroke-width="0.8"/>
+
+  <!-- ═══════════════ PLANNING SECTION ═══════════════ -->
+  <rect x="570" y="215" width="500" height="200" rx="10" fill="url(#planningGrad)" stroke="#3a8a5a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="590" y="240" fill="#6ad09a" font-size="14" font-weight="700" letter-spacing="1">PLANNING</text>
+
+  <!-- MPPI Box -->
+  <rect x="595" y="255" width="220" height="70" rx="8" fill="#0f1e15" stroke="#4ab07a" stroke-width="1"/>
+  <text x="705" y="278" text-anchor="middle" fill="#8ae0b4" font-size="13" font-weight="600">MPPI Planner</text>
+  <text x="705" y="295" text-anchor="middle" fill="#6ab090" font-size="11">512 samples · 12-step horizon</text>
+  <text x="705" y="312" text-anchor="middle" fill="#4a9070" font-size="10">~6 ms · CPU</text>
+
+  <!-- GPS Nav Box -->
+  <rect x="840" y="255" width="200" height="70" rx="8" fill="#0f1e15" stroke="#4ab07a" stroke-width="1"/>
+  <text x="940" y="278" text-anchor="middle" fill="#8ae0b4" font-size="13" font-weight="600">GPS Navigator</text>
+  <text x="940" y="295" text-anchor="middle" fill="#6ab090" font-size="11">Haversine waypoint mgr</text>
+  <text x="940" y="312" text-anchor="middle" fill="#4a9070" font-size="10">Sequential checkpoints</text>
+
+  <!-- Depth Safety Box -->
+  <rect x="595" y="340" width="220" height="32" rx="5" fill="#0a1810" stroke="#3a8a5a" stroke-width="0.8"/>
+  <text x="705" y="360" text-anchor="middle" fill="#70b090" font-size="10">Depth Safety Layer — waypoint override</text>
+
+  <!-- Planning outputs -->
+  <rect x="840" y="340" width="200" height="32" rx="5" fill="#0a1810" stroke="#3a8a5a" stroke-width="0.8"/>
+  <text x="940" y="360" text-anchor="middle" fill="#70b090" font-size="10">heading error · distance · bearing</text>
+
+  <!-- MPPI → safety -->
+  <line x1="705" y1="325" x2="705" y2="340" stroke="#3a8a5a" stroke-width="0.8"/>
+  <!-- GPS → outputs -->
+  <line x1="940" y1="325" x2="940" y2="340" stroke="#3a8a5a" stroke-width="0.8"/>
+
+  <!-- ═══════════════ ARROWS: Perception → Planning ═══════════════ -->
+  <!-- depth map → MPPI -->
+  <path d="M 400 372 L 400 395 L 620 395 L 620 280" stroke="#4a8a6a" stroke-width="1.5" fill="none" marker-end="url(#arrowGreen)" stroke-dasharray="5,3"/>
+  <text x="510" y="390" text-anchor="middle" fill="#5a8a6a" font-size="9">depth map</text>
+
+  <!-- polar clearance → Depth Safety -->
+  <path d="M 467 372 L 467 400 L 650 400 L 650 372" stroke="#4a8a6a" stroke-width="1.5" fill="none" marker-end="url(#arrowGreen)" stroke-dasharray="5,3"/>
+
+  <!-- target angle → MPPI (goal direction) -->
+  <path d="M 235 372 L 235 388 L 590 388 L 590 290 L 595 290" stroke="#4a8a6a" stroke-width="1.2" fill="none" marker-end="url(#arrowGreen)" stroke-dasharray="4,3"/>
+  <text x="415" y="383" text-anchor="middle" fill="#5a8a6a" font-size="9">goal direction</text>
+
+  <!-- ═══════════════ CONTROL SECTION ═══════════════ -->
+  <rect x="30" y="430" width="640" height="130" rx="10" fill="url(#controlGrad)" stroke="#8a3a5a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="50" y="455" fill="#d06a9a" font-size="14" font-weight="700" letter-spacing="1">CONTROL</text>
+
+  <!-- Visual Servo Box -->
+  <rect x="55" y="470" width="200" height="65" rx="8" fill="#1e0f15" stroke="#b04a7a" stroke-width="1"/>
+  <text x="155" y="493" text-anchor="middle" fill="#e08ab4" font-size="13" font-weight="600">Visual Servo</text>
+  <text x="155" y="510" text-anchor="middle" fill="#b06a90" font-size="11">Proportional centering</text>
+  <text x="155" y="525" text-anchor="middle" fill="#904a70" font-size="10">Indoor object tracking</text>
+
+  <!-- Outdoor Controller Box -->
+  <rect x="280" y="470" width="200" height="65" rx="8" fill="#1e0f15" stroke="#b04a7a" stroke-width="1"/>
+  <text x="380" y="493" text-anchor="middle" fill="#e08ab4" font-size="13" font-weight="600">Outdoor Controller</text>
+  <text x="380" y="510" text-anchor="middle" fill="#b06a90" font-size="11">GPS heading P-control</text>
+  <text x="380" y="525" text-anchor="middle" fill="#904a70" font-size="10">Depth obstacle override</text>
+
+  <!-- Control output -->
+  <rect x="510" y="478" width="140" height="50" rx="8" fill="#1e0f15" stroke="#e94560" stroke-width="1.2"/>
+  <text x="580" y="500" text-anchor="middle" fill="#e94560" font-size="12" font-weight="600">(linear, angular)</text>
+  <text x="580" y="516" text-anchor="middle" fill="#b04060" font-size="10">Motor command</text>
+
+  <!-- Visual Servo → output -->
+  <line x1="255" y1="502" x2="510" y2="502" stroke="#8a3a5a" stroke-width="1" marker-end="url(#arrowRed)"/>
+  <!-- Outdoor → output -->
+  <line x1="480" y1="502" x2="510" y2="502" stroke="#8a3a5a" stroke-width="1"/>
+
+  <!-- Arrows: Perception → Control -->
+  <path d="M 115 372 L 115 420 L 130 420 L 130 470" stroke="#8a4a6a" stroke-width="1.5" fill="none" marker-end="url(#arrowRed)" stroke-dasharray="5,3"/>
+  <text x="80" y="420" fill="#8a4a6a" font-size="9">bbox</text>
+
+  <!-- Arrows: Planning → Control -->
+  <path d="M 705 372 L 705 420 L 380 420 L 380 470" stroke="#8a4a6a" stroke-width="1.5" fill="none" marker-end="url(#arrowRed)" stroke-dasharray="5,3"/>
+  <path d="M 940 372 L 940 420 L 420 420 L 420 470" stroke="#8a4a6a" stroke-width="1.2" fill="none" stroke-dasharray="4,3"/>
+
+  <!-- ═══════════════ INTERFACE SECTION ═══════════════ -->
+  <rect x="700" y="430" width="370" height="130" rx="10" fill="url(#interfaceGrad)" stroke="#8a8a3a" stroke-width="1" filter="url(#shadow)"/>
+  <text x="720" y="455" fill="#d0d06a" font-size="14" font-weight="700" letter-spacing="1">INTERFACE</text>
+
+  <!-- SDK Box -->
+  <rect x="725" y="470" width="160" height="65" rx="8" fill="#1e1e0f" stroke="#b0b04a" stroke-width="1"/>
+  <text x="805" y="493" text-anchor="middle" fill="#e0e08a" font-size="13" font-weight="600">FrodoBot SDK</text>
+  <text x="805" y="510" text-anchor="middle" fill="#b0b06a" font-size="11">HTTP API @ :8000</text>
+  <text x="805" y="525" text-anchor="middle" fill="#90904a" font-size="10">Camera · GPS · IMU · Motors</text>
+
+  <!-- Web UI Box -->
+  <rect x="900" y="470" width="145" height="65" rx="8" fill="#1e1e0f" stroke="#b0b04a" stroke-width="1"/>
+  <text x="972" y="493" text-anchor="middle" fill="#e0e08a" font-size="13" font-weight="600">Web UI</text>
+  <text x="972" y="510" text-anchor="middle" fill="#b0b06a" font-size="11">localhost:5000</text>
+  <text x="972" y="525" text-anchor="middle" fill="#90904a" font-size="10">Live viz + commands</text>
+
+  <!-- Control → SDK -->
+  <line x1="650" y1="503" x2="725" y2="503" stroke="#d4a030" stroke-width="1.5" marker-end="url(#arrowYellow)"/>
+  <text x="688" y="496" text-anchor="middle" fill="#b09030" font-size="9">cmd</text>
+
+  <!-- ═══════════════ ROBOT (bottom) ═══════════════ -->
+  <rect x="360" y="600" width="380" height="55" rx="28" fill="#1a1a2e" stroke="#e94560" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="550" y="625" text-anchor="middle" fill="#e0e0e0" font-size="15" font-weight="600">FrodoBots Earth Rover</text>
+  <text x="550" y="643" text-anchor="middle" fill="#888" font-size="11">Camera · GPS · IMU · Wheel Encoders</text>
+
+  <!-- SDK → Robot -->
+  <line x1="805" y1="535" x2="805" y2="575" stroke="#d4a030" stroke-width="1.5" fill="none"/>
+  <path d="M 805 575 L 805 590 L 620 590 L 620 600" stroke="#d4a030" stroke-width="1.5" fill="none" marker-end="url(#arrowYellow)"/>
+  <text x="830" y="568" fill="#b09030" font-size="9">motor cmds</text>
+
+  <!-- Robot → SDK (sensor feedback) -->
+  <path d="M 480 600 L 480 585 L 760 585 L 760 535" stroke="#6a9ad0" stroke-width="1.2" fill="none" marker-end="url(#arrow)" stroke-dasharray="5,3"/>
+  <text x="480" y="578" fill="#5a8ab0" font-size="9">frames + sensors</text>
+
+  <!-- ═══════════════ ROS2 (optional, side) ═══════════════ -->
+  <rect x="30" y="580" width="180" height="55" rx="8" fill="#0f1a2e" stroke="#3a5a8a" stroke-width="1" stroke-dasharray="4,2" filter="url(#shadow)"/>
+  <text x="120" y="603" text-anchor="middle" fill="#6a9ad0" font-size="12" font-weight="600">ROS 2 Bridge</text>
+  <text x="120" y="620" text-anchor="middle" fill="#4a7a9a" font-size="10">PointCloud2 · Image · Odom</text>
+  <text x="120" y="635" text-anchor="middle" fill="#3a6a8a" font-size="9" font-style="italic">(optional)</text>
+
+  <!-- Dashed line from control area to ROS2 -->
+  <path d="M 155 535 L 155 550 L 120 550 L 120 580" stroke="#3a5a8a" stroke-width="1" fill="none" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+
+  <!-- ═══════════════ LEGEND ═══════════════ -->
+  <rect x="30" y="670" width="1040" height="36" rx="6" fill="#0a0f15" stroke="#2a2a3a" stroke-width="0.5"/>
+  <circle cx="60" cy="688" r="5" fill="#4a7ab0"/>
+  <text x="75" y="692" fill="#7090b0" font-size="10">Perception</text>
+  <circle cx="170" cy="688" r="5" fill="#4ab07a"/>
+  <text x="185" y="692" fill="#70b090" font-size="10">Planning</text>
+  <circle cx="268" cy="688" r="5" fill="#b04a7a"/>
+  <text x="283" y="692" fill="#b06a90" font-size="10">Control</text>
+  <circle cx="355" cy="688" r="5" fill="#b0b04a"/>
+  <text x="370" y="692" fill="#b0b06a" font-size="10">Interface</text>
+
+  <line x1="460" y1="688" x2="500" y2="688" stroke="#6a8ab0" stroke-width="1.5"/>
+  <text x="510" y="692" fill="#7090b0" font-size="10">Data flow</text>
+
+  <line x1="590" y1="688" x2="630" y2="688" stroke="#6a8ab0" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="640" y="692" fill="#7090b0" font-size="10">Sensor feedback</text>
+
+  <line x1="760" y1="688" x2="800" y2="688" stroke="#d4a030" stroke-width="1.5"/>
+  <text x="810" y="692" fill="#b09030" font-size="10">Commands</text>
+
+  <line x1="900" y1="688" x2="940" y2="688" stroke="#3a5a8a" stroke-width="1" stroke-dasharray="4,2"/>
+  <text x="950" y="692" fill="#4a7a9a" font-size="10">Optional</text>
+</svg>

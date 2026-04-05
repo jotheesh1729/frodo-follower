@@ -15,9 +15,21 @@ Built for the [FrodoBots Earth Rover Challenge](https://www.frodobots.com/erc).
 
 ## Demo
 
-<p align="center">
-  <img src="assets/web_ui.png" width="90%" alt="Frodo-AI Web Navigator Interface"/>
-</p>
+**"Go to the chair"** — natural language object navigation
+
+https://github.com/tarunkumarnyu/frodo-ai/raw/main/assets/demos/frodo_chair.mp4
+
+**"Go to the person"** — human target tracking
+
+https://github.com/tarunkumarnyu/frodo-ai/raw/main/assets/demos/frodo_person.mp4
+
+**Obstacle avoidance** — depth-based collision prevention
+
+https://github.com/tarunkumarnyu/frodo-ai/raw/main/assets/demos/frodo_obs.mp4
+
+**"Go to the person" + obstacle avoidance** — combined navigation
+
+https://github.com/tarunkumarnyu/frodo-ai/raw/main/assets/demos/frodo_person_obstacle.mp4
 
 ## System Architecture
 

@@ -128,7 +128,7 @@ Key parameters in `config/default.yaml`:
 
 Tested on:
 - FrodoBots Earth Rover (Mini)
-- RTX 4080 (12 GB VRAM) for YOLO + depth inference
+- RTX 5070Ti (12 GB VRAM) for YOLO + depth inference
 
 Should work on any CUDA GPU. Falls back to CPU if CUDA isn't available (much slower).
 

@@ -26,6 +26,7 @@ import io
 import json
 import time
 import threading
+import queue
 
 import numpy as np
 import cv2
@@ -86,6 +87,56 @@ from object_detector import parse_target
 
 
 # ---------------------------------------------------------------------------
+# Async depth worker — DA2 runs in its own thread so the main loop never
+# blocks waiting for depth. Main loop submits frames; worker processes them
+# as fast as the model allows; get() always returns the freshest result.
+# ---------------------------------------------------------------------------
+
+class DepthWorker(threading.Thread):
+    def __init__(self, device: str, model_size: str = 'base', max_depth: float = 10.0):
+        super().__init__(daemon=True)
+        self._device     = device
+        self._model_size = model_size
+        self._max_depth  = max_depth
+        self._in: queue.Queue = queue.Queue(maxsize=1)
+        self._depth      = None
+        self._lock       = threading.Lock()
+        self._ready      = threading.Event()
+
+    def run(self):
+        import torch
+        if self._device == 'cuda':
+            torch.cuda.set_device(0)
+        from depth_estimator import DepthEstimator
+        estimator = DepthEstimator(
+            model_size=self._model_size,
+            max_depth=self._max_depth,
+            device=self._device,
+        )
+        self._ready.set()
+        while True:
+            frame = self._in.get()
+            if frame is None:
+                break
+            depth = estimator.estimate(frame)
+            with self._lock:
+                self._depth = depth
+
+    def submit(self, frame: np.ndarray):
+        try:
+            self._in.put_nowait(frame.copy())
+        except queue.Full:
+            pass  # worker busy — drop old frame, next frame will be submitted
+
+    def get(self):
+        with self._lock:
+            return self._depth
+
+    def wait_ready(self, timeout: float = 180.0):
+        self._ready.wait(timeout)
+
+
+# ---------------------------------------------------------------------------
 # Navigation loop (runs in background)
 # ---------------------------------------------------------------------------
 
@@ -121,18 +172,29 @@ class Navigator:
         self.search_start_time = None  # set when search spin begins
 
         # Load models
-        print("Loading YOLO 26m...")
         import torch
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.device = device
+
+        # YOLO — use TensorRT engine if available (run export_trt.py once to generate)
+        _scripts_dir = os.path.dirname(os.path.abspath(__file__))
+        _engine = os.path.join(_scripts_dir, 'yolo26m.engine')
+        _weights = 'yolo26m.pt'
+        yolo_path = _engine if os.path.exists(_engine) else _weights
+        print(f"Loading YOLO ({os.path.basename(yolo_path)})...")
         from ultralytics import YOLO
-        self.yolo = YOLO("yolo26m.pt")
+        self.yolo = YOLO(yolo_path)
         self.yolo.to(device)
-        print(f"YOLO on {device}")
-        print("Loading DA2...")
-        from depth_estimator import DepthEstimator
-        self.estimator = DepthEstimator(model_size='small', max_depth=10.0, device=device)
-        print(f"DA2 on {device}")
+        print(f"YOLO ready on {device}")
+
+        # DA2 Base — runs in background thread; Base model has better depth quality
+        # than Small, especially near edges and at medium distances (1–5 m range).
+        # Download checkpoint: depth_anything_v2_metric_hypersim_vitb.pth
+        print("Loading DA2 Base (background thread)...")
+        self._depth_worker = DepthWorker(device=device, model_size='base', max_depth=10.0)
+        self._depth_worker.start()
+        self._depth_worker.wait_ready()
+        print(f"DA2 Base ready on {device}")
         print("Loading MPPI...")
         from mppi_planner import MPPIPlanner, MPPIConfig
         self.mppi = MPPIPlanner(MPPIConfig(
@@ -184,8 +246,11 @@ class Navigator:
                 with self.lock:
                     current_target = self.target_class
 
-                # DA2 depth — skip when idle to avoid bottlenecking at ~7fps for nothing
-                depth = self.estimator.estimate(frame) if current_target else None
+                # Submit frame to async DA2 worker (non-blocking).
+                # get() returns the most recently completed depth map (1 frame old at most).
+                if current_target:
+                    self._depth_worker.submit(frame)
+                depth = self._depth_worker.get() if current_target else None
 
                 if frame_count % 20 == 0:
                     print(f"[LOOP] target_class='{current_target}' detections={[d['class'] for d in detections]}")

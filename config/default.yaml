@@ -8,7 +8,7 @@ perception:
   yolo_model: "yolo26m.pt"
   yolo_confidence: 0.2
   yolo_device: "auto"        # auto, cuda, cpu
-  depth_model: "small"       # small, base, large
+  depth_model: "base"        # small, base, large
   depth_max: 10.0
   depth_device: "auto"       # auto, cuda, cpu
 

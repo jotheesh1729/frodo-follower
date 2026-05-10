@@ -95,7 +95,7 @@ Aliases work too — "sofa" maps to couch, "fridge" to refrigerator, "phone" to 
 ## Project structure
 
 ```
-frodo_ai/
+frodo_follower/
 ├── perception/
 │   ├── object_detector.py    # YOLO detection + NLP command parsing
 │   └── depth_estimator.py    # Depth Anything V2 wrapper (metric depth in metres)

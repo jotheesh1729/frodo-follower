@@ -183,8 +183,9 @@ class Navigator:
         yolo_path = _engine if os.path.exists(_engine) else _weights
         print(f"Loading YOLO ({os.path.basename(yolo_path)})...")
         from ultralytics import YOLO
-        self.yolo = YOLO(yolo_path)
-        self.yolo.to(device)
+        self.yolo = YOLO(yolo_path, task='detect')
+        if not yolo_path.endswith('.engine'):
+            self.yolo.to(device)  # TRT engines have device baked in, skip .to()
         print(f"YOLO ready on {device}")
 
         # DA2 Base — runs in background thread; Base model has better depth quality

@@ -206,6 +206,10 @@ All parameters are tunable in `config/default.yaml`:
 
 `Python` · `PyTorch` · `TensorRT FP16` · `YOLO 11m` · `Depth Anything V2` · `MPPI` · `OpenCV` · `ROS 2 Jazzy` · `FrodoBot SDK` · `ASUS ROG Strix RTX 4080`
 
+## Credits
+
+Built on top of [frodo-ai](https://github.com/tarunkumarnyu/frodo-ai) by [Tarun Kumar](https://github.com/tarunkumarnyu) — the original baseline for FrodoBots Earth Rover navigation.
+
 ## License
 
 MIT

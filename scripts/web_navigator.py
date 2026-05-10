@@ -277,28 +277,16 @@ class Navigator:
                         dist_str = f'{target_dist:.2f}m' if target_dist else f'bbox {bbox_height_frac:.0%}'
                         self.status = f'ARRIVED at {current_target}! ({dist_str})'
                     else:
-                        servo_ang = -STEER_GAIN * normalized_error
+                        raw_cmd_ang = -STEER_GAIN * normalized_error
 
                         if depth is not None:
-                            mppi_lin, mppi_ang, mppi_debug = self.mppi.plan(depth, goal_direction_rad=goal_dir)
+                            # MPPI controls linear speed only — slows down near obstacles.
+                            # Visual servo has sole control of angular — keeps target centred.
+                            mppi_lin, _, mppi_debug = self.mppi.plan(depth, goal_direction_rad=goal_dir)
                             raw_cmd_lin = mppi_lin
-
-                            # Obstacle steering blend: check forward corridor for obstacles.
-                            # When clear → pure visual servo (accurate tracking).
-                            # When obstacle ahead → blend in MPPI angular (steers around it).
-                            dh_, dw_ = depth.shape
-                            cy_ = int(dh_ * 0.55)
-                            cw_ = dw_ // 5
-                            fwd = depth[cy_:, max(0, dw_//2 - cw_):dw_//2 + cw_]
-                            nearest_obs = float(np.percentile(fwd, 10)) if fwd.size > 0 else 10.0
-                            # blend 0=all servo, 1=all MPPI, capped at 0.8 so target never lost
-                            BLEND_START = 1.5
-                            blend = float(np.clip(1.0 - nearest_obs / BLEND_START, 0.0, 0.8))
-                            raw_cmd_ang = (1.0 - blend) * servo_ang + blend * mppi_ang
                         else:
                             speed_scale = max(0.25, 1.0 - abs(normalized_error))
                             raw_cmd_lin = 0.30 * speed_scale
-                            raw_cmd_ang = servo_ang
 
                         dist_str = f'{target_dist:.1f}m' if target_dist else '?m'
                         self.status = f'Navigating → {current_target} ({dist_str}, err={normalized_error:+.2f})'

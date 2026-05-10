@@ -2,7 +2,6 @@
 
 Tell the [FrodoBots Earth Rover](https://frodobots.com/) where to go in plain English. Type "go to the chair" and it finds the chair, navigates to it, and stops when it gets there. No maps, no GPS, no LLM — just a camera and vision models.
 
-Built for the [FrodoBots Earth Rover Challenge](https://www.frodobots.com/erc).
 
 ## Demo
 

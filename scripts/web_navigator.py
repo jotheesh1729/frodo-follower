@@ -461,321 +461,379 @@ HTML_PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Frodo-Follower</title>
+<title>Frodo Follower</title>
 <style>
-:root {
-  --bg: #0d0d0f;
-  --surface: #16181d;
-  --surface2: #1e2028;
-  --border: #2a2d38;
-  --accent: #6c63ff;
-  --accent2: #ff4d6d;
-  --green: #00e5a0;
-  --yellow: #ffd166;
-  --text: #e2e4ed;
-  --muted: #6b7280;
-  --radius: 10px;
-}
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-/* ── Top bar ── */
-.topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.topbar-left { display: flex; align-items: center; gap: 12px; }
-.logo { font-size: 18px; font-weight: 700; letter-spacing: 1px; color: var(--accent); }
-.logo span { color: var(--accent2); }
-.pill { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; letter-spacing: .5px; }
-.pill-gpu { background: #1a2a1a; color: var(--green); border: 1px solid #1e4d1e; }
-.pill-cpu { background: #2a1a1a; color: var(--yellow); border: 1px solid #4d1e1e; }
-.topbar-right { display: flex; gap: 20px; }
-.stat { text-align: right; }
-.stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
-.stat-val { font-size: 15px; font-weight: 600; }
-.stat-val.green { color: var(--green); }
-.stat-val.red { color: var(--accent2); }
-.stat-val.yellow { color: var(--yellow); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #111;
+  color: #e0e0e0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
-/* ── Layout ── */
-.workspace { display: grid; grid-template-columns: 300px 1fr 220px; grid-template-rows: 1fr; gap: 0; flex: 1; overflow: hidden; }
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  height: 42px;
+  background: #181818;
+  border-bottom: 1px solid #252525;
+  flex-shrink: 0;
+}
+.logo { font-size: 13px; font-weight: 600; letter-spacing: 2px; color: #fff; text-transform: uppercase; }
+.topbar-right { display: flex; align-items: center; gap: 22px; }
+.stat { display: flex; align-items: baseline; gap: 5px; }
+.stat-key { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-val { font-size: 13px; font-weight: 500; }
+.dev-badge { font-size: 10px; padding: 2px 7px; border-radius: 3px; font-weight: 600; letter-spacing: 0.5px; }
+.dev-gpu { background: #192819; color: #4caf50; }
+.dev-cpu { background: #2a1818; color: #ef5350; }
 
-/* ── Left sidebar ── */
-.sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 14px; gap: 12px; overflow-y: auto; }
-.sidebar-section { display: flex; flex-direction: column; gap: 8px; }
-.section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 600; }
-.cmd-row { display: flex; gap: 8px; }
-.cmd-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; color: var(--text); font-size: 14px; outline: none; transition: border .2s; }
-.cmd-input:focus { border-color: var(--accent); }
-.btn-go { background: var(--accent); color: white; border: none; border-radius: var(--radius); padding: 10px 18px; font-weight: 700; font-size: 14px; cursor: pointer; transition: opacity .15s; }
-.btn-go:hover { opacity: .85; }
-.btn-stop { background: var(--accent2); color: white; border: none; border-radius: var(--radius); padding: 10px 18px; font-weight: 700; font-size: 14px; cursor: pointer; width: 100%; transition: opacity .15s; }
-.btn-stop:hover { opacity: .85; }
-.quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.qbtn { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 6px; font-size: 12px; color: var(--text); cursor: pointer; text-align: center; transition: border-color .15s, color .15s; }
-.qbtn:hover { border-color: var(--accent); color: var(--accent); }
-.status-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; }
-.status-card.navigating { border-color: var(--accent); }
-.status-card.arrived { border-color: var(--green); }
-.status-card.searching { border-color: var(--yellow); }
-.status-card.stopped { border-color: var(--border); }
-#status-msg { font-size: 13px; line-height: 1.4; }
-.metric-row { display: flex; justify-content: space-between; align-items: center; }
-.metric-label { font-size: 11px; color: var(--muted); }
-.metric-val { font-size: 13px; font-weight: 600; }
-.target-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: white; border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
-.target-badge.empty { background: var(--surface2); color: var(--muted); }
+.workspace {
+  display: grid;
+  grid-template-columns: 230px 1fr 190px;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  background: #161616;
+  border-right: 1px solid #242424;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  gap: 18px;
+  overflow-y: auto;
+}
+.sec-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #484848;
+  margin-bottom: 7px;
+  font-weight: 600;
+}
+.cmd-input {
+  width: 100%;
+  background: #111;
+  border: 1px solid #242424;
+  border-radius: 4px;
+  padding: 8px 11px;
+  color: #e0e0e0;
+  font-size: 13px;
+  outline: none;
+  transition: border-color .15s;
+}
+.cmd-input:focus { border-color: #3b82f6; }
+.btn {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 6px;
+  border: none;
+  transition: opacity .15s;
+}
+.btn:hover { opacity: .85; }
+.btn-go   { background: #3b82f6; color: #fff; }
+.btn-stop { background: #1e1e1e; border: 1px solid #2e2e2e; color: #ef5350; margin-top: 5px; }
+
+.status-box {
+  background: #111;
+  border: 1px solid #242424;
+  border-radius: 4px;
+  padding: 9px 11px;
+  font-size: 12px;
+  color: #888;
+  line-height: 1.5;
+  min-height: 36px;
+  transition: border-color .2s;
+}
+.status-box.navigating { border-color: #3b82f6; color: #93c5fd; }
+.status-box.arrived    { border-color: #4caf50; color: #86efac; }
+.status-box.searching  { border-color: #d97706; color: #fcd34d; }
+.status-box.notfound   { border-color: #ef5350; color: #fca5a5; }
+
+.target-val { font-size: 13px; font-weight: 500; color: #3b82f6; }
+.target-val.none { color: #444; }
+
 .obj-cloud { display: flex; flex-wrap: wrap; gap: 5px; }
-.obj-chip { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; font-size: 11px; cursor: pointer; transition: all .15s; }
-.obj-chip:hover { border-color: var(--accent); color: var(--accent); }
-.obj-chip.active { background: var(--accent); border-color: var(--accent); color: white; }
-.cmd-hist { display: flex; flex-direction: column; gap: 4px; max-height: 100px; overflow-y: auto; }
-.hist-item { font-size: 11px; color: var(--muted); padding: 2px 0; border-bottom: 1px solid var(--border); }
+.obj-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: #1c1c1c;
+  border: 1px solid #282828;
+  color: #888;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.obj-tag:hover { border-color: #3b82f6; color: #93c5fd; }
+.obj-tag.active { background: #1a2e4a; border-color: #3b82f6; color: #93c5fd; }
 
-/* ── Center canvas ── */
-.canvas-area { position: relative; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-#main-feed { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-.canvas-overlay { position: absolute; top: 10px; left: 10px; display: flex; gap: 6px; }
-.feed-badge { background: rgba(0,0,0,.65); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; transition: border-color .15s; }
-.feed-badge.active { border-color: var(--accent); color: var(--accent); }
-.lock-indicator { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); border: 1px solid var(--green); border-radius: 8px; padding: 5px 14px; font-size: 12px; color: var(--green); font-weight: 600; display: none; }
-.lock-indicator.visible { display: block; }
+.hist-list { display: flex; flex-direction: column; gap: 3px; }
+.hist-item { font-size: 11px; color: #484848; padding: 1px 0; }
+
+/* ── Center ── */
+.center {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+.feed-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000;
+}
+.feed-wrap.main-feed  { flex: 3; border-bottom: 1px solid #1e1e1e; }
+.feed-wrap.depth-feed { flex: 2; }
+.feed-img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.feed-tag {
+  position: absolute;
+  top: 8px; left: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #444;
+  background: rgba(0,0,0,.55);
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+.lock-tag {
+  position: absolute;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #4caf50;
+  background: rgba(0,0,0,.65);
+  padding: 3px 10px;
+  border-radius: 3px;
+  border: 1px solid #2a3e2a;
+  display: none;
+}
+.lock-tag.on { display: block; }
 
 /* ── Right panel ── */
-.right-panel { background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
-.rpanel-block { flex: 1; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); overflow: hidden; min-height: 0; }
-.rpanel-block:last-child { border-bottom: none; }
-.rpanel-title { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 8px 12px; font-weight: 600; background: var(--surface2); flex-shrink: 0; }
-.rpanel-img { width: 100%; flex: 1; object-fit: contain; display: block; background: #000; min-height: 0; }
-.vel-bars { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
-.vel-row { display: flex; flex-direction: column; gap: 4px; }
-.vel-label { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; }
-.vel-track { background: var(--bg); border-radius: 4px; height: 8px; overflow: hidden; }
-.vel-fill { height: 100%; border-radius: 4px; transition: width .1s, background .1s; }
-.vel-fill.fwd { background: var(--green); }
-.vel-fill.turn { background: var(--accent); }
-.vel-fill.rev { background: var(--accent2); }
+.right {
+  background: #161616;
+  border-left: 1px solid #242424;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  gap: 18px;
+  overflow-y: auto;
+}
+.metric-list { display: flex; flex-direction: column; gap: 10px; }
+.metric-row  { display: flex; justify-content: space-between; align-items: center; }
+.metric-key  { font-size: 11px; color: #555; }
+.metric-val  { font-size: 13px; font-weight: 500; color: #e0e0e0; }
+.vel-track   { height: 3px; background: #1c1c1c; border-radius: 2px; margin-top: 5px; overflow: hidden; }
+.vel-fill    { height: 100%; border-radius: 2px; transition: width .1s; }
+.vel-fwd  { background: #4caf50; }
+.vel-rev  { background: #ef5350; }
+.vel-turn { background: #3b82f6; }
+.mppi-img { width: 100%; border-radius: 3px; display: block; background: #111; }
 </style>
 </head>
 <body>
 
-<!-- Top bar -->
 <div class="topbar">
-  <div class="topbar-left">
-    <div class="logo">FRODO<span>FOLLOWER</span></div>
-    <div id="gpu-pill" class="pill pill-gpu">GPU</div>
-  </div>
+  <div class="logo">Frodo Follower</div>
   <div class="topbar-right">
-    <div class="stat"><div class="stat-label">FPS</div><div class="stat-val green" id="fps-val">—</div></div>
-    <div class="stat"><div class="stat-label">Distance</div><div class="stat-val" id="dist-val">—</div></div>
-    <div class="stat"><div class="stat-label">Angle</div><div class="stat-val" id="angle-val">—</div></div>
-    <div class="stat"><div class="stat-label">Lin / Ang</div><div class="stat-val" id="cmd-val">—</div></div>
+    <div class="stat"><span class="stat-key">FPS</span><span class="stat-val" id="fps-val">—</span></div>
+    <div class="stat"><span class="stat-key">Dist</span><span class="stat-val" id="dist-val">—</span></div>
+    <div class="stat"><span class="stat-key">Angle</span><span class="stat-val" id="angle-val">—</span></div>
+    <div class="stat"><span class="stat-key">Lin / Ang</span><span class="stat-val" id="cmd-val">—</span></div>
+    <div id="dev-badge" class="dev-badge dev-gpu">GPU</div>
   </div>
 </div>
 
-<!-- Main workspace -->
 <div class="workspace">
 
-  <!-- Left sidebar -->
   <div class="sidebar">
-
-    <div class="sidebar-section">
-      <div class="section-title">Command</div>
-      <div class="cmd-row">
-        <input class="cmd-input" id="cmd-input" placeholder="go to the chair..." autofocus>
-        <button class="btn-go" onclick="sendCommand()">GO</button>
-      </div>
-      <button class="btn-stop" onclick="stopRobot()">&#9632; STOP</button>
+    <div>
+      <div class="sec-label">Command</div>
+      <input class="cmd-input" id="cmd-input" placeholder="go to the chair..." autofocus>
+      <button class="btn btn-go" onclick="sendCmd()">Send</button>
+      <button class="btn btn-stop" onclick="stopRobot()">&#9632; Stop</button>
     </div>
 
-    <div class="sidebar-section">
-      <div class="section-title">Quick targets</div>
-      <div class="quick-grid">
-        <div class="qbtn" onclick="quickNav('person')">Person</div>
-        <div class="qbtn" onclick="quickNav('chair')">Chair</div>
-        <div class="qbtn" onclick="quickNav('bottle')">Bottle</div>
-        <div class="qbtn" onclick="quickNav('laptop')">Laptop</div>
-        <div class="qbtn" onclick="quickNav('backpack')">Backpack</div>
-        <div class="qbtn" onclick="quickNav('cup')">Cup</div>
-        <div class="qbtn" onclick="quickNav('tv')">TV</div>
-        <div class="qbtn" onclick="quickNav('book')">Book</div>
-      </div>
+    <div>
+      <div class="sec-label">Status</div>
+      <div class="status-box" id="status-box">Initializing...</div>
     </div>
 
-    <div class="sidebar-section">
-      <div class="section-title">Status</div>
-      <div class="status-card stopped" id="status-card">
-        <div id="status-msg">Initializing...</div>
-      </div>
-      <div class="metric-row">
-        <span class="metric-label">Target locked</span>
-        <span class="target-badge empty" id="target-badge">None</span>
-      </div>
+    <div>
+      <div class="sec-label">Target</div>
+      <div class="target-val none" id="target-val">None</div>
     </div>
 
-    <div class="sidebar-section">
-      <div class="section-title">Detected objects</div>
+    <div>
+      <div class="sec-label">Detected</div>
       <div class="obj-cloud" id="obj-cloud"></div>
     </div>
 
-    <div class="sidebar-section">
-      <div class="section-title">History</div>
-      <div class="cmd-hist" id="cmd-hist"></div>
+    <div>
+      <div class="sec-label">History</div>
+      <div class="hist-list" id="hist-list"></div>
     </div>
-
   </div>
 
-  <!-- Center canvas -->
-  <div class="canvas-area">
-    <img id="main-feed" src="" alt="">
-    <div class="canvas-overlay">
-      <div class="feed-badge active" onclick="switchFeed('yolo')">Detection</div>
-      <div class="feed-badge" onclick="switchFeed('depth')">Depth</div>
-      <div class="feed-badge" onclick="switchFeed('mppi')">MPPI</div>
+  <div class="center">
+    <div class="feed-wrap main-feed">
+      <img class="feed-img" id="main-feed" src="" alt="">
+      <div class="feed-tag">Detection</div>
+      <div class="lock-tag" id="lock-tag">Target locked</div>
     </div>
-    <div class="lock-indicator" id="lock-ind">&#9679; TARGET LOCKED</div>
+    <div class="feed-wrap depth-feed">
+      <img class="feed-img" id="depth-feed" src="" alt="">
+      <div class="feed-tag">Depth</div>
+    </div>
   </div>
 
-  <!-- Right panel -->
-  <div class="right-panel">
-    <div class="rpanel-block">
-      <div class="rpanel-title">Depth map</div>
-      <img class="rpanel-img" id="depth-thumb" src="" alt="">
-    </div>
-    <div class="rpanel-block">
-      <div class="rpanel-title">MPPI planner</div>
-      <img class="rpanel-img" id="mppi-thumb" src="" alt="">
-    </div>
-    <div class="rpanel-block" style="flex: 0 0 auto;">
-      <div class="rpanel-title">Velocity</div>
-      <div class="vel-bars">
-        <div class="vel-row">
-          <div class="vel-label"><span>Linear</span><span id="lin-num">0.00</span></div>
-          <div class="vel-track"><div class="vel-fill fwd" id="lin-bar" style="width:0%"></div></div>
+  <div class="right">
+    <div>
+      <div class="sec-label">Velocity</div>
+      <div class="metric-list">
+        <div>
+          <div class="metric-row">
+            <span class="metric-key">Linear</span>
+            <span class="metric-val" id="lin-val">0.00</span>
+          </div>
+          <div class="vel-track"><div class="vel-fill vel-fwd" id="lin-bar" style="width:0%"></div></div>
         </div>
-        <div class="vel-row">
-          <div class="vel-label"><span>Angular</span><span id="ang-num">0.00</span></div>
-          <div class="vel-track"><div class="vel-fill turn" id="ang-bar" style="width:0%"></div></div>
+        <div>
+          <div class="metric-row">
+            <span class="metric-key">Angular</span>
+            <span class="metric-val" id="ang-val">0.00</span>
+          </div>
+          <div class="vel-track"><div class="vel-fill vel-turn" id="ang-bar" style="width:0%"></div></div>
         </div>
       </div>
+    </div>
+
+    <div>
+      <div class="sec-label">Metrics</div>
+      <div class="metric-list" id="metrics-list">
+        <div class="metric-row"><span class="metric-key">Distance</span><span class="metric-val" id="m-dist">—</span></div>
+        <div class="metric-row"><span class="metric-key">Angle</span><span class="metric-val" id="m-angle">—</span></div>
+        <div class="metric-row"><span class="metric-key">FPS</span><span class="metric-val" id="m-fps">—</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-label">MPPI</div>
+      <img class="mppi-img" id="mppi-img" src="" alt="">
     </div>
   </div>
 
 </div>
 
 <script>
-let activeFeed = 'yolo';
-let lastData = {};
-let cmdHistory = [];
+let history_ = [];
 
-function switchFeed(type) {
-  activeFeed = type;
-  document.querySelectorAll('.feed-badge').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
-  updateMainFeed(lastData);
-}
+document.getElementById('cmd-input').addEventListener('keypress', e => {
+  if (e.key === 'Enter') sendCmd();
+});
 
-function updateMainFeed(d) {
-  const feeds = { yolo: d.annotated, depth: d.depth, mppi: d.mppi };
-  const src = feeds[activeFeed];
-  if (src) document.getElementById('main-feed').src = 'data:image/jpeg;base64,' + src;
-}
-
-function sendCommand() {
+function sendCmd() {
   const inp = document.getElementById('cmd-input');
   const cmd = inp.value.trim();
   if (!cmd) return;
-  addHistory(cmd);
+  addHist(cmd);
   inp.value = '';
   fetch('/command', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command: cmd})})
     .then(r => r.json()).then(d => setStatus(d.message || d.status, 'navigating'));
 }
 
-function quickNav(obj) {
-  addHistory('go to the ' + obj);
-  fetch('/command', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command: 'go to the ' + obj})})
-    .then(r => r.json()).then(d => setStatus(d.message, 'navigating'));
-}
-
 function stopRobot() {
-  addHistory('stop');
+  addHist('stop');
   fetch('/command', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command: 'stop'})})
-    .then(() => setStatus('Stopped.', 'stopped'));
+    .then(() => setStatus('Stopped.', ''));
 }
 
-function addHistory(cmd) {
-  cmdHistory.unshift(cmd);
-  if (cmdHistory.length > 8) cmdHistory.pop();
-  const el = document.getElementById('cmd-hist');
-  el.innerHTML = cmdHistory.map(c => `<div class="hist-item">&rsaquo; ${c}</div>`).join('');
+function addHist(cmd) {
+  history_.unshift(cmd);
+  if (history_.length > 6) history_.pop();
+  document.getElementById('hist-list').innerHTML =
+    history_.map(c => `<div class="hist-item">› ${c}</div>`).join('');
 }
 
 function setStatus(msg, cls) {
-  const card = document.getElementById('status-card');
-  card.className = 'status-card ' + (cls || 'stopped');
-  document.getElementById('status-msg').textContent = msg;
+  const el = document.getElementById('status-box');
+  el.className = 'status-box ' + (cls || '');
+  el.textContent = msg;
 }
-
-document.getElementById('cmd-input').addEventListener('keypress', e => { if (e.key === 'Enter') sendCommand(); });
 
 function updateFeed() {
   fetch('/state').then(r => r.json()).then(d => {
-    lastData = d;
+    if (d.annotated) document.getElementById('main-feed').src  = 'data:image/jpeg;base64,' + d.annotated;
+    if (d.depth)     document.getElementById('depth-feed').src = 'data:image/jpeg;base64,' + d.depth;
+    if (d.mppi)      document.getElementById('mppi-img').src   = 'data:image/jpeg;base64,' + d.mppi;
 
-    // Main feed
-    updateMainFeed(d);
+    document.getElementById('fps-val').textContent   = (d.fps || 0).toFixed(1);
+    document.getElementById('dist-val').textContent  = d.distance ? d.distance.toFixed(2) + 'm' : '—';
+    document.getElementById('angle-val').textContent = d.angle ? d.angle.toFixed(1) + '°' : '—';
+    document.getElementById('cmd-val').textContent   = (d.linear||0).toFixed(2) + ' / ' + (d.angular||0).toFixed(2);
 
-    // Right panel thumbnails
-    if (d.depth) document.getElementById('depth-thumb').src = 'data:image/jpeg;base64,' + d.depth;
-    if (d.mppi)  document.getElementById('mppi-thumb').src  = 'data:image/jpeg;base64,' + d.mppi;
+    document.getElementById('m-dist').textContent  = d.distance ? d.distance.toFixed(2) + 'm' : '—';
+    document.getElementById('m-angle').textContent = d.angle ? d.angle.toFixed(1) + '°' : '—';
+    document.getElementById('m-fps').textContent   = (d.fps || 0).toFixed(1);
 
-    // Top bar stats
-    document.getElementById('fps-val').textContent   = (d.fps||0).toFixed(1);
-    document.getElementById('dist-val').textContent  = d.distance ? d.distance.toFixed(2)+'m' : '—';
-    document.getElementById('angle-val').textContent = d.angle ? d.angle.toFixed(1)+'°' : '—';
-    document.getElementById('cmd-val').textContent   = (d.linear||0).toFixed(2)+' / '+(d.angular||0).toFixed(2);
+    const badge = document.getElementById('dev-badge');
+    const gpu = (d.gpu || '').toLowerCase() === 'cuda';
+    badge.textContent = gpu ? 'GPU' : 'CPU';
+    badge.className = 'dev-badge ' + (gpu ? 'dev-gpu' : 'dev-cpu');
 
-    // GPU pill
-    const pill = document.getElementById('gpu-pill');
-    const onGpu = (d.gpu||'').toLowerCase() === 'cuda';
-    pill.textContent = onGpu ? 'GPU' : 'CPU';
-    pill.className = 'pill ' + (onGpu ? 'pill-gpu' : 'pill-cpu');
+    const st = (d.status || '').toLowerCase();
+    let cls = '';
+    if (st.includes('navigating'))      cls = 'navigating';
+    else if (st.includes('arrived'))    cls = 'arrived';
+    else if (st.includes('search'))     cls = 'searching';
+    else if (st.includes('could not'))  cls = 'notfound';
+    setStatus(d.status || '—', cls);
 
-    // Status card
-    const st = (d.status||'').toLowerCase();
-    let cls = 'stopped';
-    if (st.includes('navigating')) cls = 'navigating';
-    else if (st.includes('arrived')) cls = 'arrived';
-    else if (st.includes('search') || st.includes('lost')) cls = 'searching';
-    setStatus(d.status||'—', cls);
+    const tv = document.getElementById('target-val');
+    if (d.target) { tv.textContent = d.target; tv.className = 'target-val'; }
+    else           { tv.textContent = 'None';   tv.className = 'target-val none'; }
 
-    // Target badge
-    const badge = document.getElementById('target-badge');
-    if (d.target) { badge.textContent = d.target; badge.className = 'target-badge'; }
-    else           { badge.textContent = 'None';   badge.className = 'target-badge empty'; }
+    document.getElementById('lock-tag').className = 'lock-tag' + (d.target && d.distance ? ' on' : '');
 
-    // Lock indicator
-    const lockEl = document.getElementById('lock-ind');
-    lockEl.className = 'lock-indicator' + (d.target && d.distance ? ' visible' : '');
-
-    // Object cloud
     const cloud = document.getElementById('obj-cloud');
     cloud.innerHTML = '';
-    (d.objects||[]).sort().forEach(obj => {
-      const c = document.createElement('span');
-      c.className = 'obj-chip' + (obj === d.target ? ' active' : '');
-      c.textContent = obj;
-      c.onclick = () => quickNav(obj);
-      cloud.appendChild(c);
+    (d.objects || []).sort().forEach(obj => {
+      const t = document.createElement('span');
+      t.className = 'obj-tag' + (obj === d.target ? ' active' : '');
+      t.textContent = obj;
+      t.onclick = () => {
+        addHist('go to the ' + obj);
+        fetch('/command', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command: 'go to the ' + obj})});
+      };
+      cloud.appendChild(t);
     });
 
-    // Velocity bars (max linear ~0.35, max angular ~0.45)
-    const linPct = Math.min(100, Math.abs(d.linear||0) / 0.35 * 100);
-    const angPct = Math.min(100, Math.abs(d.angular||0) / 0.45 * 100);
-    const linBar = document.getElementById('lin-bar');
-    linBar.style.width = linPct + '%';
-    linBar.className = 'vel-fill ' + ((d.linear||0) >= 0 ? 'fwd' : 'rev');
-    document.getElementById('lin-num').textContent = (d.linear||0).toFixed(2);
+    const linPct = Math.min(100, Math.abs(d.linear  || 0) / 0.35 * 100);
+    const angPct = Math.min(100, Math.abs(d.angular || 0) / 0.45 * 100);
+    const lb = document.getElementById('lin-bar');
+    lb.style.width = linPct + '%';
+    lb.className = 'vel-fill ' + ((d.linear || 0) >= 0 ? 'vel-fwd' : 'vel-rev');
+    document.getElementById('lin-val').textContent = (d.linear  || 0).toFixed(2);
     document.getElementById('ang-bar').style.width = angPct + '%';
-    document.getElementById('ang-num').textContent = (d.angular||0).toFixed(2);
+    document.getElementById('ang-val').textContent = (d.angular || 0).toFixed(2);
 
   }).catch(() => {});
 }
@@ -785,6 +843,7 @@ setInterval(updateFeed, 300);
 </body>
 </html>
 """
+
 
 
 class Handler(BaseHTTPRequestHandler):

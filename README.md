@@ -1,121 +1,30 @@
-# Frodo-Follower — Autonomous Object Navigation for FrodoBots
+# frodo-follower
 
-![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)
-![TensorRT](https://img.shields.io/badge/TensorRT-Optimized-76B900?logo=nvidia&logoColor=white)
-![YOLO](https://img.shields.io/badge/YOLO-v11m-00FFFF)
-![Depth Anything V2](https://img.shields.io/badge/Depth-Anything%20V2-blueviolet)
-![MPPI](https://img.shields.io/badge/MPPI-Planner-green)
-![ROS2](https://img.shields.io/badge/ROS2-Jazzy-blue?logo=ros&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-yellow)
-
-Autonomous navigation system for the [FrodoBots Earth Rover](https://frodobots.com/) platform. Tell the robot where to go in plain English — it detects the target with YOLO, estimates depth with Depth Anything V2, plans collision-free trajectories with MPPI, and drives there using visual servoing. Both models are exported to TensorRT FP16 engines for real-time inference on VRAM. No maps, no LiDAR, no LLM — just vision.
+Tell the [FrodoBots Earth Rover](https://frodobots.com/) where to go in plain English. Type "go to the chair" and it finds the chair, navigates to it, and stops when it gets there. No maps, no GPS, no LLM — just a camera and vision models.
 
 Built for the [FrodoBots Earth Rover Challenge](https://www.frodobots.com/erc).
 
 ## Demo
 
-<p align="center"><b>"Go to the chair"</b> — natural language object navigation</p>
+> Videos coming soon
 
-https://github.com/user-attachments/assets/bd51aed4-1628-48da-b842-15a2e5776b1b
+## How it works
 
-</p>
+The main loop runs in `scripts/web_navigator.py`:
 
-<p align="center"><b>"Go to the person"</b> — human target tracking</p>
+1. **YOLO 26m** detects objects in the camera frame every iteration (~5 ms with TensorRT FP16)
+2. You type a command like "find the bottle" — fuzzy matching maps it to a YOLO class, no LLM needed
+3. **Depth Anything V2 Base** runs in a background thread, producing metric depth maps in meters
+4. **MPPI planner** samples 512 trajectories, scores them against the depth map, and picks a forward speed that avoids obstacles
+5. **Visual servo** keeps the target centred in frame using proportional steering with EMA smoothing
+6. The robot stops when the target is within ~1.2m or fills more than 55% of the frame height
+7. If the target leaves view, it coasts to the last known position, then does a timed 360° search spin before giving up
 
-<p align="center">
+The web UI at `localhost:5000` shows the detection feed, depth map, MPPI planner view, and live velocity.
 
-https://github.com/user-attachments/assets/8ffeb659-7b90-401f-a34a-0e56bf7467e0
+## Setup
 
-</p>
-
-<p align="center"><b>Obstacle avoidance</b> — depth-based collision prevention</p>
-
-<p align="center">
-
-https://github.com/user-attachments/assets/c3eca453-9161-42fc-9d32-ce3f971de85a
-
-</p>
-
-<p align="center"><b>"Go to the person" + obstacle avoidance</b> — combined navigation</p>
-
-<p align="center">
-
-https://github.com/user-attachments/assets/b140a3c0-7449-421b-a70d-6e6f2073b25b
-
-</p>
-
-
-
-## System Architecture
-
-<p align="center">
-  <img src="assets/architecture.png" width="100%" alt="Frodo-Follower System Architecture — Perception, Planning, Control, Interface pipeline"/>
-</p>
-
-## How It Works
-
-**Perception — What's out there?**
-1. YOLO 11m runs object detection at ~8 ms per frame via TensorRT FP16, detecting 80+ COCO classes
-2. Natural language commands are parsed into YOLO class names via fuzzy matching and alias resolution — no LLM required
-3. Depth Anything V2 (Small) produces metric monocular depth maps at ~30 ms via TensorRT FP16, giving distance to every pixel in the scene
-
-**Planning — Where to go?**
-1. MPPI (Model Predictive Path Integral) samples 512 candidate trajectories over a 12-step horizon
-2. Each trajectory is scored against a depth-derived obstacle cost map, goal heading reward, and smoothness penalty
-3. Soft-minimum weighting selects the optimal control command in ~6 ms on CPU
-
-**Control — How to get there?**
-1. Visual servoing keeps the target object centered in the camera frame using proportional steering
-2. Approach speed scales with target distance — full speed at range, creeping near arrival
-3. If the target is lost, the controller maintains last-known heading for 15 frames before entering search mode
-4. For outdoor GPS missions, a proportional heading controller steers toward sequential checkpoints with depth-based obstacle override
-
-**Interface — Putting it together**
-1. Web UI at `localhost:5000` streams live YOLO detections, depth maps, and MPPI trajectory visualizations
-2. Type commands like "go to the chair" or click detected objects to set navigation targets
-3. FrodoBot SDK communication handles camera frames, sensor data, and motor commands over HTTP
-
-## Pipeline Latency
-
-Benchmarked on ASUS ROG Strix with RTX 4080 (12 GB VRAM), TensorRT FP16 engines.
-
-| Component | Latency | Device |
-|-----------|---------|--------|
-| YOLO 11m detection (TensorRT FP16) | ~8 ms | GPU |
-| Depth Anything V2 Small (TensorRT FP16) | ~30 ms | GPU |
-| MPPI planning (512 samples) | ~6 ms | CPU |
-| Visual servo + control | <1 ms | CPU |
-| **Total pipeline** | **~45 ms** | **Mixed** |
-
-## Project Structure
-
-```
-frodo_ai/
-├── perception/
-│   ├── object_detector.py       # YOLO detection + NLP target matching
-│   ├── depth_estimator.py       # Depth Anything V2 wrapper (metric depth)
-│   └── depth_safety.py          # Runtime depth safety layer for waypoint override
-├── planning/
-│   ├── mppi_planner.py          # MPPI trajectory optimization (512 samples, 12-step horizon)
-│   └── gps_navigator.py         # Haversine GPS math + waypoint manager
-├── control/
-│   ├── visual_servo.py          # Proportional visual servoing controller
-│   └── outdoor_controller.py    # GPS heading P-controller with depth obstacle avoidance
-└── interface/
-    └── rover_interface.py       # FrodoBot SDK HTTP communication
-
-scripts/
-├── web_navigator.py             # Web UI — type objects, robot navigates to them
-├── outdoor_nav.py               # GPS waypoint navigation for ERC outdoor missions
-├── depth_viewer.py              # Live DA2 depth + obstacle avoidance viewer
-├── mapper_3d.py                 # MPPI driving + 3D point cloud mapping
-└── ros2_node.py                 # ROS2 publisher (PointCloud2, Image, Odometry, Path)
-```
-
-## Quick Start
-
-### 1. Install
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/jotheesh1729/frodo-follower.git
@@ -124,91 +33,108 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Download Depth Anything V2 checkpoint
+### 2. Download model checkpoints
+
+**YOLO 26m** — downloads automatically on first run via ultralytics.
+
+**Depth Anything V2 Base** (metric indoor):
 
 ```bash
 mkdir -p third_party/Depth-Anything-V2/checkpoints
-# Download from: https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf
-# Place depth_anything_v2_metric_hypersim_vits.pth in the checkpoints directory
+python3 -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download(
+    repo_id='depth-anything/Depth-Anything-V2-Metric-Hypersim-Base',
+    filename='depth_anything_v2_metric_hypersim_vitb.pth',
+    local_dir='third_party/Depth-Anything-V2/checkpoints'
+)
+"
 ```
 
-### 3. Configure
+### 3. (Optional) Export YOLO to TensorRT for faster inference
+
+Requires CUDA + TensorRT. Run once, then the engine is used automatically.
+
+```bash
+python scripts/export_trt.py --yolo
+```
+
+### 4. Configure
 
 ```bash
 cp config/.env.example config/.env
-# Edit config/.env with your SDK_API_TOKEN and BOT_SLUG
+# Fill in SDK_API_TOKEN and BOT_SLUG from your FrodoBots account
 ```
 
-### 4. Start the SDK server
+### 5. Start the SDK server
 
 ```bash
 cd earth-rovers-sdk && hypercorn main:app --reload
 ```
 
-### 5. Run
+### 6. Run
 
 ```bash
-# Web navigator (indoor object navigation)
 python scripts/web_navigator.py
 # Open http://localhost:5000
-
-# GPS outdoor navigation (ERC missions)
-python scripts/outdoor_nav.py --send-control --depth-safety
-
-# Depth viewer
-python scripts/depth_viewer.py
-
-# 3D mapper
-python scripts/mapper_3d.py
 ```
 
-## Design Decisions
+## Commands
 
-- **No LLM for command parsing** — Fuzzy string matching against YOLO's 80 classes with alias expansion handles natural language commands at zero latency and zero cost, covering the practical command space without API dependencies
-- **MPPI over deterministic planners** — Sampling-based trajectory optimization naturally handles the noisy, non-convex cost landscapes from monocular depth, while deterministic planners (A*, DWA) require clean grid maps that monocular depth cannot provide
-- **Visual servoing as primary control** — Centering the target in the camera frame provides a simple, robust control law that degrades gracefully when depth estimates are noisy, with MPPI providing the obstacle avoidance layer underneath
-- **Monocular depth over LiDAR** — The FrodoBot platform has only a single front camera; Depth Anything V2 extracts usable obstacle clearance from this constraint, eliminating the need for additional sensors
-- **Polar clearance representation** — Converting the full depth map into a 1D angular clearance vector reduces the obstacle avoidance problem to a lightweight lookup, enabling real-time safety checks without expensive 3D reasoning
+Type anything natural into the web UI:
 
-## Hardware
+```
+go to the chair
+find a person
+navigate to the bottle
+stop
+```
 
-| Component | Spec | Purpose |
-|-----------|------|---------|
-| Robot | FrodoBots Earth Rover (Mini/Zero) | Mobile platform |
-| Camera | Wide-angle front camera (90° FOV) | Visual perception |
-| Sensors | GPS, IMU (accel/gyro/mag), wheel RPM | Outdoor navigation + odometry |
-| Compute | ASUS ROG Strix — RTX 4080 (12 GB VRAM) | TensorRT inference for YOLO + DA2 |
+Aliases work too — "sofa" maps to couch, "fridge" to refrigerator, "phone" to cell phone, etc. If the input doesn't match anything, you get a clear "cannot find" message instead of a wrong guess.
 
-## Scripts
+## Project structure
 
-| Script | Description |
-|--------|-------------|
-| `web_navigator.py` | Web UI — type natural language commands, robot navigates to detected objects |
-| `outdoor_nav.py` | GPS waypoint navigation with optional depth obstacle avoidance for ERC missions |
-| `depth_viewer.py` | Live depth visualization with polar clearance overlay |
-| `mapper_3d.py` | MPPI-driven exploration with 3D point cloud mapping |
-| `ros2_node.py` | ROS2 node publishing PointCloud2, Image, Odometry, and Path topics |
+```
+frodo_ai/
+├── perception/
+│   ├── object_detector.py    # YOLO detection + NLP command parsing
+│   └── depth_estimator.py    # Depth Anything V2 wrapper (metric depth in metres)
+└── planning/
+    └── mppi_planner.py       # MPPI trajectory optimiser (512 samples, 12-step horizon)
+
+scripts/
+├── web_navigator.py          # main script — web UI + navigation loop
+└── export_trt.py             # export YOLO/DA2 to TensorRT FP16 engines
+
+config/
+├── default.yaml              # all tunable parameters
+└── .env.example              # SDK credentials template
+```
 
 ## Configuration
 
-All parameters are tunable in `config/default.yaml`:
+Key parameters in `config/default.yaml`:
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `perception.yolo_model` | `yolo11m.pt` | YOLO model variant |
-| `perception.depth_model` | `small` | DA2 model size (small/base/large) |
-| `planning.mppi_samples` | `512` | Number of MPPI trajectory samples |
-| `planning.mppi_horizon` | `12` | Planning horizon (timesteps) |
-| `control.max_linear` | `0.30` | Maximum forward speed |
-| `control.arrival_distance` | `0.8` | Stop distance from target (meters) |
+| Parameter | Default | Notes |
+|-----------|---------|-------|
+| `perception.yolo_model` | `yolo26m.pt` | auto-uses `yolo26m.engine` if exported |
+| `perception.depth_model` | `base` | small / base / large |
+| `control.arrival_distance` | `1.2` | metres — stops this far from target |
+| `control.arrival_bbox_frac` | `0.55` | stops if target fills >55% of frame height |
+| `control.steer_gain` | `0.25` | proportional gain for visual servo |
+| `planning.mppi_samples` | `512` | more samples = better paths, higher CPU |
 
-## Stack
+## Hardware
 
-`Python` · `PyTorch` · `TensorRT FP16` · `YOLO 11m` · `Depth Anything V2` · `MPPI` · `OpenCV` · `ROS 2 Jazzy` · `FrodoBot SDK` · `ASUS ROG Strix RTX 4080`
+Tested on:
+- FrodoBots Earth Rover (Mini)
+- RTX 4080 (12 GB VRAM) for YOLO + depth inference
+
+Should work on any CUDA GPU. Falls back to CPU if CUDA isn't available (much slower).
 
 ## Credits
 
-Built on top of [frodo-ai](https://github.com/tarunkumarnyu/frodo-ai) by [Tarun Kumar](https://github.com/tarunkumarnyu) — the original baseline for FrodoBots Earth Rover navigation.
+Based on [frodo-ai](https://github.com/tarunkumarnyu/frodo-ai) by [Tarun Kumar](https://github.com/tarunkumarnyu).
 
 ## License
 

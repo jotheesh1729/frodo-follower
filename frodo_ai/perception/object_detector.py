@@ -69,11 +69,11 @@ def parse_target(command: str) -> tuple[str, str]:
     if target in ALIASES:
         return ALIASES[target], f'"{target}" -> {ALIASES[target]}'
 
-    matches = get_close_matches(target, YOLO_CLASSES, n=1, cutoff=0.5)
+    matches = get_close_matches(target, YOLO_CLASSES, n=1, cutoff=0.65)
     if matches:
         return matches[0], f'Best match for "{target}": {matches[0]}'
 
-    matches = get_close_matches(target, list(ALIASES.keys()), n=1, cutoff=0.5)
+    matches = get_close_matches(target, list(ALIASES.keys()), n=1, cutoff=0.65)
     if matches:
         return ALIASES[matches[0]], f'"{target}" ~ "{matches[0]}" -> {ALIASES[matches[0]]}'
 

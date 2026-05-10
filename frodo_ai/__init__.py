@@ -1,1 +1,1 @@
-"""Frodo-AI: Autonomous navigation for the FrodoBots Earth Rover."""
+"""Frodo-Follower: Autonomous navigation for the FrodoBots Earth Rover."""

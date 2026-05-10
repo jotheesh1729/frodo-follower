@@ -10,7 +10,7 @@ Usage:
     estimator = DepthEstimator()
     depth_map = estimator.estimate(rgb_frame)  # Returns (H, W) in meters
 
-Author: Vivek Mattam
+Author: Jotheesh Reddy Kummathi
 """
 
 import sys
@@ -99,7 +99,7 @@ class DepthEstimator:
 
     def _find_checkpoint(self, model_size):
         """Search for checkpoint file in common locations."""
-        base_dir = os.path.join(os.path.dirname(__file__), '..')
+        base_dir = os.path.join(os.path.dirname(__file__), '..', '..')
         ckpt_dir = os.path.join(base_dir, 'third_party', 'Depth-Anything-V2', 'checkpoints')
         # Map model_size → ViT encoder suffix used in actual HuggingFace filenames
         encoder_map = {'small': 'vits', 'base': 'vitb', 'large': 'vitl'}
@@ -139,12 +139,16 @@ class DepthEstimator:
         # Preprocess
         img_tensor = self._preprocess(image)
 
-        # Inference
+        # Inference — FP16 on GPU, FP32 on CPU
         with torch.no_grad():
-            depth = self.model(img_tensor)
+            if self.device.type == 'cuda':
+                with torch.amp.autocast('cuda'):
+                    depth = self.model(img_tensor)
+            else:
+                depth = self.model(img_tensor)
 
-        # Post-process
-        depth = depth.squeeze().cpu().numpy()
+        # Post-process — cast to float32 since autocast may produce float16
+        depth = depth.squeeze().cpu().numpy().astype(np.float32)
 
         # Resize to target size if needed
         if depth.shape != target_size:

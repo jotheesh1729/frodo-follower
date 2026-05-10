@@ -406,15 +406,18 @@ function getCodec() {
 
 async function captureFrameAsBase64(videoTrack) {
   const frame = await videoTrack.getCurrentFrameData();
+  if (!frame || frame.width === 0 || frame.height === 0) {
+    return null;
+  }
   const canvas = document.createElement("canvas");
   canvas.width = frame.width;
   canvas.height = frame.height;
   const ctx = canvas.getContext("2d");
   ctx.putImageData(frame, 0, 0);
-  return canvas.toDataURL(
-    `image/${window.imageParams["imageFormat"]}`,
-    window.imageParams["imageQuality"]
-  );
+  // Use imageParams if set, otherwise default to jpeg/0.8
+  const fmt = (window.imageParams && window.imageParams.imageFormat) || "jpeg";
+  const qual = (window.imageParams && window.imageParams.imageQuality) || 0.8;
+  return canvas.toDataURL(`image/${fmt}`, qual);
 }
 
 // Add at the beginning of the file
@@ -432,6 +435,9 @@ async function getLastBase64Frame(uid) {
   lastBase64Frames[uid] = base64Frame;
   return base64Frame;
 }
+
+// Set default imageParams so frame capture works even without pyppeteer calling initializeImageParams
+window.imageParams = window.imageParams || { imageFormat: "jpeg", imageQuality: 0.8 };
 
 function initializeImageParams({ imageFormat, imageQuality }) {
   window.imageParams = { imageFormat, imageQuality };
@@ -459,7 +465,8 @@ async function _pushFrameLoop() {
         }).catch(() => {});
       }
     } catch (e) {
-      // Video track not ready yet — ignore
+      // Video track not ready yet — log for debugging
+      console.debug("[_pushFrameLoop] frame capture error:", e.message || e);
     }
     await new Promise((r) => setTimeout(r, 300));
   }

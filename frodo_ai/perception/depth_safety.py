@@ -17,7 +17,7 @@ Usage:
     frame = rover.get_camera_frame()
     safe_wp, was_overridden = safety.check_waypoint(frame, predicted_waypoint)
 
-Author: Vivek Mattam
+Author: Jotheesh Reddy Kummathi
 """
 
 import numpy as np

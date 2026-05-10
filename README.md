@@ -1,4 +1,4 @@
-# Frodo-AI — Autonomous Object Navigation for FrodoBots
+# Frodo-Follower — Autonomous Object Navigation for FrodoBots
 
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)
@@ -16,8 +16,6 @@ Built for the [FrodoBots Earth Rover Challenge](https://www.frodobots.com/erc).
 ## Demo
 
 <p align="center"><b>"Go to the chair"</b> — natural language object navigation</p>
-
-<p align="center">
 
 https://github.com/user-attachments/assets/bd51aed4-1628-48da-b842-15a2e5776b1b
 
@@ -52,7 +50,7 @@ https://github.com/user-attachments/assets/b140a3c0-7449-421b-a70d-6e6f2073b25b
 ## System Architecture
 
 <p align="center">
-  <img src="assets/architecture.png" width="100%" alt="Frodo-AI System Architecture — Perception, Planning, Control, Interface pipeline"/>
+  <img src="assets/architecture.png" width="100%" alt="Frodo-Follower System Architecture — Perception, Planning, Control, Interface pipeline"/>
 </p>
 
 ## How It Works
@@ -120,8 +118,8 @@ scripts/
 ### 1. Install
 
 ```bash
-git clone https://github.com/tarunkumarnyu/frodo-ai.git
-cd frodo-ai
+git clone https://github.com/jotheesh1729/frodo-follower.git
+cd frodo-follower
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -130,7 +128,7 @@ pip install -r requirements.txt
 
 ```bash
 mkdir -p third_party/Depth-Anything-V2/checkpoints
-# Download from: https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Indoor-Small
+# Download from: https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf
 # Place depth_anything_v2_metric_hypersim_vits.pth in the checkpoints directory
 ```
 

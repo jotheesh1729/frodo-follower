@@ -1,11 +1,11 @@
-# Frodo-AI Default Configuration
+# Frodo-Follower Default Configuration
 
 sdk:
   url: "http://localhost:8000"
   timeout: 5.0
 
 perception:
-  yolo_model: "yolo11m.pt"
+  yolo_model: "yolo26m.pt"
   yolo_confidence: 0.2
   yolo_device: "auto"        # auto, cuda, cpu
   depth_model: "small"       # small, base, large
@@ -20,8 +20,9 @@ planning:
 control:
   max_linear: 0.30
   max_angular: 0.45
-  steer_gain: 0.35
-  arrival_distance: 0.8
+  steer_gain: 0.25
+  arrival_distance: 1.2   # stop this far from target (metres)
+  arrival_bbox_frac: 0.55 # also stop if target bbox fills >55% of frame height
   slowdown_distance: 2.0
 
 camera:

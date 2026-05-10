@@ -21,7 +21,7 @@ class BrowserService:
     def __init__(self):
         self.browser = None
         self.page = None
-        self.default_viewport = {"width": 3840, "height": 2160}
+        self.default_viewport = {"width": 1280, "height": 720}
 
     async def initialize_browser(self):
         if not self.browser:
@@ -36,6 +36,13 @@ class BrowserService:
                     args=[
                         "--ignore-certificate-errors",
                         "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--use-gl=swiftshader",
+                        "--no-first-run",
+                        "--disable-extensions",
+                        "--autoplay-policy=no-user-gesture-required",
                         f"--window-size={self.default_viewport['width']},{self.default_viewport['height']}",
                     ],
                 )
@@ -52,7 +59,7 @@ class BrowserService:
                 await self.page.waitForSelector("#map")
                 await self.page.setViewport(self.default_viewport)
 
-                await self.page.waitFor(2000)
+                await self.page.waitFor(6000)
 
                 call = f"""() => {{
                     window.initializeImageParams({{

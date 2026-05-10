@@ -500,10 +500,12 @@ async def update_frame(request: Request):
     global simple_frame_cache
     import time
     data = await request.json()
+    frame = data.get("frame")
     simple_frame_cache = {
-        "frame": data.get("frame"),
+        "frame": frame,
         "last_update": time.time()
     }
+    print(f"[update_frame] received frame, size={len(frame) if frame else 0}")
     return JSONResponse(content={"status": "ok"})
 
 
@@ -685,46 +687,25 @@ async def get_front_frame():
     last_update = simple_frame_cache.get("last_update", 0)
     age = time.time() - last_update
 
-    if frame_data and age < 1.0:
+    if frame_data and age < 5.0:
         response_data = {
             "front_frame": frame_data,
             "timestamp": datetime.utcnow().timestamp()
         }
         return JSONResponse(content=response_data)
 
-    await need_start_mission()
-    if not auth_response_data:
-        await auth()
-
-    try:
-        front_frame = await browser_service.front()
-        if not front_frame:
-            raise HTTPException(status_code=503, detail="Front frame unavailable from browser session")
-
-        if "," in front_frame:
-            _, frame_data = front_frame.split(",", 1)
-        else:
-            frame_data = front_frame
-
-        simple_frame_cache = {
-            "frame": frame_data,
-            "last_update": time.time(),
-        }
-        response_data = {
-            "front_frame": frame_data,
-            "timestamp": datetime.utcnow().timestamp(),
-        }
-        return JSONResponse(content=response_data)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "No camera frame available. Make sure browser is open at http://localhost:8000/sdk "
-                f"and video is visible. Error: {exc}"
-            ),
-        ) from exc
+    # No fresh frame in cache — the real browser's JS _pushFrameLoop() hasn't
+    # pushed a frame yet. Return a helpful 503 instead of falling back to
+    # the fragile pyppeteer headless browser path.
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "No camera frame available. Make sure a browser tab is open at "
+            "http://localhost:8000 with the video stream visible and 'Join' "
+            "clicked. The browser's JavaScript pushes frames to this endpoint "
+            "automatically every 300ms."
+        ),
+    )
 
 
 @app.get("/v2/rear")

@@ -11,3 +11,4 @@ checkpoints/
 *.log
 .DS_Store
 screenshots/
+CHANGES.md

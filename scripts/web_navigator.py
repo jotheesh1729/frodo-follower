@@ -117,6 +117,9 @@ class Navigator:
         self._smooth_ang = 0.0
         self._smooth_lin = 0.0
 
+        # Search state
+        self.search_start_time = None  # set when search spin begins
+
         # Load models
         print("Loading YOLO 26m...")
         import torch
@@ -142,6 +145,7 @@ class Navigator:
     def set_target(self, target_class: str):
         with self.lock:
             self.target_class = target_class
+            self.search_start_time = None  # reset search on new command
             print(f"[NAV] Target set to: '{target_class}'")
             if not target_class:
                 self.linear = 0.0
@@ -245,6 +249,7 @@ class Navigator:
 
                 if current_target and target_det:
                     self.target_lost_frames = 0
+                    self.search_start_time = None  # target re-acquired — cancel search
                     cx = target_det['center_x']
                     cy = target_det['center_y']
                     self.last_target_cx = cx
@@ -272,14 +277,29 @@ class Navigator:
                         dist_str = f'{target_dist:.2f}m' if target_dist else f'bbox {bbox_height_frac:.0%}'
                         self.status = f'ARRIVED at {current_target}! ({dist_str})'
                     else:
-                        raw_cmd_ang = -STEER_GAIN * normalized_error
-                        # MPPI: plan safe linear speed accounting for depth obstacles
+                        servo_ang = -STEER_GAIN * normalized_error
+
                         if depth is not None:
-                            mppi_lin, _, mppi_debug = self.mppi.plan(depth, goal_direction_rad=goal_dir)
+                            mppi_lin, mppi_ang, mppi_debug = self.mppi.plan(depth, goal_direction_rad=goal_dir)
                             raw_cmd_lin = mppi_lin
+
+                            # Obstacle steering blend: check forward corridor for obstacles.
+                            # When clear → pure visual servo (accurate tracking).
+                            # When obstacle ahead → blend in MPPI angular (steers around it).
+                            dh_, dw_ = depth.shape
+                            cy_ = int(dh_ * 0.55)
+                            cw_ = dw_ // 5
+                            fwd = depth[cy_:, max(0, dw_//2 - cw_):dw_//2 + cw_]
+                            nearest_obs = float(np.percentile(fwd, 10)) if fwd.size > 0 else 10.0
+                            # blend 0=all servo, 1=all MPPI, capped at 0.8 so target never lost
+                            BLEND_START = 1.5
+                            blend = float(np.clip(1.0 - nearest_obs / BLEND_START, 0.0, 0.8))
+                            raw_cmd_ang = (1.0 - blend) * servo_ang + blend * mppi_ang
                         else:
                             speed_scale = max(0.25, 1.0 - abs(normalized_error))
                             raw_cmd_lin = 0.30 * speed_scale
+                            raw_cmd_ang = servo_ang
+
                         dist_str = f'{target_dist:.1f}m' if target_dist else '?m'
                         self.status = f'Navigating → {current_target} ({dist_str}, err={normalized_error:+.2f})'
 
@@ -290,13 +310,27 @@ class Navigator:
                         raw_cmd_lin = 0.10
                         self.status = f'Lost {current_target} — heading to last position ({self.target_lost_frames}/{MAX_LOST})'
                     else:
-                        # Search spin — bypass EMA so spin starts immediately at full speed.
-                        # Direction: toward where target was last seen, so we re-enter FOV faster.
-                        search_dir = -1.0 if (self.last_target_angle and self.last_target_angle > 0) else 1.0
-                        self._smooth_ang = 0.22 * search_dir
-                        raw_cmd_ang     = 0.22 * search_dir
-                        raw_cmd_lin = 0.0
-                        self.status = f'Searching for {current_target}... (spinning)'
+                        # Timed 360° search — one full rotation at 0.22 rad/s ≈ 28s, then give up.
+                        # Direction: toward where target was last seen to re-acquire faster.
+                        if self.search_start_time is None:
+                            self.search_start_time = time.time()
+                        elapsed = time.time() - self.search_start_time
+                        SEARCH_TIMEOUT = 30.0  # seconds
+                        if elapsed < SEARCH_TIMEOUT:
+                            search_dir = -1.0 if (self.last_target_angle and self.last_target_angle > 0) else 1.0
+                            self._smooth_ang = 0.22 * search_dir  # bypass EMA for immediate spin
+                            raw_cmd_ang = 0.22 * search_dir
+                            raw_cmd_lin = 0.0
+                            pct = int(elapsed / SEARCH_TIMEOUT * 100)
+                            self.status = f'Searching for {current_target}... ({pct}%)'
+                        else:
+                            # Full rotation done — give up and clear target
+                            self.search_start_time = None
+                            with self.lock:
+                                self.target_class = ''
+                            self._smooth_ang = 0.0
+                            self._smooth_lin = 0.0
+                            self.status = f'Could not find {current_target}. Try a new command.'
                 else:
                     self.status = 'Idle — type a command!'
                     self.last_target_angle = None

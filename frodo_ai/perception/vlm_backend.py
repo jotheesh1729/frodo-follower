@@ -64,7 +64,7 @@ class InternVL2Backend(VLMBackend):
         import torch
         self._model = AutoModel.from_pretrained(
             self.MODEL_ID,
-            dtype=torch.float16,
+            torch_dtype=torch.float16,
             trust_remote_code=True,
             device_map="auto",
         )

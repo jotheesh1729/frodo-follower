@@ -90,8 +90,8 @@ cd frodo-follower
 
 ```bash
 pip install torch torchvision
-pip install ultralytics transformers qwen-vl-utils timm
-pip install flask opencv-python pillow requests numpy
+pip install "transformers==4.46.3" qwen-vl-utils timm sentencepiece
+pip install ultralytics flask opencv-python pillow requests numpy
 ```
 
 **3. Download model weights**

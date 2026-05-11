@@ -177,7 +177,7 @@ class TargetTracker:
             # Measurement available — update EKF
             angle_meas = self._pixel_to_angle(best_det['center_x'], frame_width)
             dist_meas = self._get_depth_at(
-                best_det['center_x'], best_det['center_y'],
+                best_det['bbox'],
                 depth_map, frame_width, frame_height
             )
 
@@ -321,7 +321,7 @@ class TargetTracker:
         if self._appearance is None:
             self._appearance = hist
         else:
-            self._appearance = 0.8 * self._appearance + 0.2 * hist
+            self._appearance = 0.95 * self._appearance + 0.05 * hist
 
         self._appearance_aspect = (x2 - x1) / max(y2 - y1, 1)
         self._appearance_size = (x2 - x1) * (y2 - y1) / max(frame_w * frame_h, 1)
@@ -379,9 +379,9 @@ class TargetTracker:
         # Detection confidence
         conf = det.get('confidence', 0.5)
 
-        # Heavily weight spatial proximity (60%) so it doesn't jump to identical objects
-        # just because their YOLO confidence is slightly higher.
-        return float(0.3 * app_sim + 0.6 * spatial_sim + 0.1 * conf)
+        # Heavily weight appearance similarity (60%) so it doesn't jump to a new person
+        # just because they walked in front of the robot (high spatial proximity).
+        return float(0.6 * app_sim + 0.3 * spatial_sim + 0.1 * conf)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -394,19 +394,36 @@ class TargetTracker:
         return float(np.arctan((px - center) / (img_width / (2 * np.tan(fov_rad / 2)))))
 
     def _get_depth_at(
-        self, cx: float, cy: float,
+        self,
+        bbox: list,
         depth_map: Optional[np.ndarray],
         frame_w: int, frame_h: int,
     ) -> float:
-        """Get median depth at a detection center point."""
+        """Sample median depth from the lower-body region of a bounding box.
+
+        Samples the 65%-90% vertical band of the bbox (legs/lower torso),
+        horizontally centred at 20%-80% width.  This region is denser than
+        the torso centre (less background bleed) and gives ground-plane
+        distance rather than line-of-sight distance to the chest.
+        """
         if depth_map is None:
-            return self._x[2] if self._initialized else 5.0  # fallback
+            return self._x[2] if self._initialized else 5.0
 
         dh, dw = depth_map.shape
-        dx = min(max(int(cx * dw / frame_w), 0), dw - 1)
-        dy = min(max(int(cy * dh / frame_h), 0), dh - 1)
-        r = 5
-        region = depth_map[max(0, dy - r):min(dh, dy + r), max(0, dx - r):min(dw, dx + r)]
+        x1, y1, x2, y2 = bbox
+        bh, bw = y2 - y1, x2 - x1
+
+        sy1 = int((y1 + 0.65 * bh) * dh / frame_h)
+        sy2 = int((y1 + 0.90 * bh) * dh / frame_h)
+        sx1 = int((x1 + 0.20 * bw) * dw / frame_w)
+        sx2 = int((x1 + 0.80 * bw) * dw / frame_w)
+
+        sy1 = max(0, min(sy1, dh - 1))
+        sy2 = max(sy1 + 1, min(sy2, dh))
+        sx1 = max(0, min(sx1, dw - 1))
+        sx2 = max(sx1 + 1, min(sx2, dw))
+
+        region = depth_map[sy1:sy2, sx1:sx2]
         if region.size > 0:
             return float(np.median(region))
         return self._x[2] if self._initialized else 5.0

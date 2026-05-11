@@ -1,135 +1,117 @@
 # frodo-follower
 
-Tell the [FrodoBots Earth Rover](https://frodobots.com/) where to go in plain English. Type "go to the chair" and it finds the chair, navigates to it, and stops when it gets there. No maps, no GPS, no LLM — just a camera and vision models.
-
+Two autonomous navigation modes for the [FrodoBots Earth Rover](https://frodobots.com/): navigate to a named object in plain English, or lock onto a person and follow them. No maps, no GPS.
 
 ## Demo
 
-> Videos coming soon
+<!-- demo video placeholder -->
+
+## Modes
+
+### Smart Navigator
+
+Type a query like "go to the chair" or "find the person with the red shirt" into the web UI. The robot finds the target and drives to it.
+
+Run:
+```bash
+python3 scripts/smart_navigator.py
+# Open http://localhost:5002
+```
+
+### Person Follower
+
+Click a person in the camera feed to lock on. The robot follows them and stops at a set distance.
+
+Run:
+```bash
+python3 scripts/person_follower.py
+# Open http://localhost:5001
+```
 
 ## How it works
 
-The main loop runs in `scripts/web_navigator.py`:
+**Detection** — YOLO-World (`yolov8s-worldv2.pt`) handles open-vocabulary detection. For descriptive queries like "person with brown shirt", the noun is extracted for YOLO and the full description is passed to the VLM for verification.
 
-1. **YOLO 26m** detects objects in the camera frame every iteration (~5 ms with TensorRT FP16)
-2. You type a command like "find the bottle" — fuzzy matching maps it to a YOLO class, no LLM needed
-3. **Depth Anything V2 Base** runs in a background thread, producing metric depth maps in meters
-4. **MPPI planner** samples 512 trajectories, scores them against the depth map, and picks a forward speed that avoids obstacles
-5. **Visual servo** keeps the target centred in frame using proportional steering with EMA smoothing
-6. The robot stops when the target is within ~1.2m or fills more than 55% of the frame height
-7. If the target leaves view, it coasts to the last known position, then does a timed 360° search spin before giving up
+**Depth** — Depth Anything V2 (metric, indoor) runs every frame producing per-pixel depth in metres. Distance to the target is sampled from the lower portion of the bounding box (feet/legs region) which gives ground-plane distance rather than line-of-sight to the torso.
 
-The web UI at `localhost:5000` shows the detection feed, depth map, MPPI planner view, and live velocity.
+**Tracking** — An EKF with state `[angle, angular_velocity, distance, approach_velocity]` maintains a smooth estimate across frames. Appearance-based re-ID (HSV histogram) handles occlusions and re-acquisition.
+
+**VLM** — Qwen2-VL-2B runs in a background thread and serves three purposes: verifying YOLO detections against descriptive queries, guiding the search rotation direction when the target is lost, and advising LEFT/RIGHT when the robot is stuck behind an obstacle.
+
+**Control** — PD controller on bearing error with derivative clamping. Obstacle avoidance uses a 5-band depth scan across the forward view; the widest gap determines the bypass arc direction. Emergency backup triggers below 0.6 m and immediately queues a bypass arc on recovery.
+
+## Architecture
+
+```
+scripts/
+    smart_navigator.py      navigation to named objects, Flask UI on :5002
+    person_follower.py      click-to-follow person, Flask UI on :5001
+
+frodo_ai/perception/
+    target_tracker.py       EKF tracker + appearance re-ID
+    depth_estimator.py      Depth Anything V2 wrapper (metric depth, metres)
+
+web/
+    smart_nav.html          UI for smart navigator
+    follower.html           UI for person follower
+```
 
 ## Setup
 
-### 1. Clone and install
+**1. Clone**
 
 ```bash
 git clone https://github.com/jotheesh1729/frodo-follower.git
 cd frodo-follower
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
 ```
 
-### 2. Download model checkpoints
+**2. Install dependencies**
 
-**YOLO 26m** — downloads automatically on first run via ultralytics.
+```bash
+pip install torch torchvision
+pip install ultralytics transformers qwen-vl-utils
+pip install flask opencv-python pillow requests numpy
+```
 
-**Depth Anything V2 Base** (metric indoor):
+**3. Download model weights**
 
+YOLO-World — put in repo root:
+```bash
+wget https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8s-worldv2.pt
+```
+
+Depth Anything V2 (metric indoor, small):
 ```bash
 mkdir -p third_party/Depth-Anything-V2/checkpoints
 python3 -c "
 from huggingface_hub import hf_hub_download
 hf_hub_download(
-    repo_id='depth-anything/Depth-Anything-V2-Metric-Hypersim-Base',
-    filename='depth_anything_v2_metric_hypersim_vitb.pth',
+    repo_id='depth-anything/Depth-Anything-V2-Metric-Hypersim-Small',
+    filename='depth_anything_v2_metric_hypersim_vits.pth',
     local_dir='third_party/Depth-Anything-V2/checkpoints'
 )
 "
 ```
 
-### 3. (Optional) Export YOLO to TensorRT for faster inference
+Qwen2-VL-2B — downloads automatically on first run via Hugging Face.
 
-Requires CUDA + TensorRT. Run once, then the engine is used automatically.
-
-```bash
-python scripts/export_trt.py --yolo
-```
-
-### 4. Configure
-
-```bash
-cp config/.env.example config/.env
-# Fill in SDK_API_TOKEN and BOT_SLUG from your FrodoBots account
-```
-
-### 5. Start the SDK server
+**4. Start the SDK**
 
 ```bash
 cd earth-rovers-sdk && hypercorn main:app --reload
 ```
 
-### 6. Run
+**5. Run**
 
 ```bash
-python scripts/web_navigator.py
-# Open http://localhost:5000
+python3 scripts/smart_navigator.py    # object navigation
+# or
+python3 scripts/person_follower.py    # person following
 ```
-
-## Commands
-
-Type anything natural into the web UI:
-
-```
-go to the chair
-find a person
-navigate to the bottle
-stop
-```
-
-Aliases work too — "sofa" maps to couch, "fridge" to refrigerator, "phone" to cell phone, etc. If the input doesn't match anything, you get a clear "cannot find" message instead of a wrong guess.
-
-## Project structure
-
-```
-frodo_follower/
-├── perception/
-│   ├── object_detector.py    # YOLO detection + NLP command parsing
-│   └── depth_estimator.py    # Depth Anything V2 wrapper (metric depth in metres)
-└── planning/
-    └── mppi_planner.py       # MPPI trajectory optimiser (512 samples, 12-step horizon)
-
-scripts/
-├── web_navigator.py          # main script — web UI + navigation loop
-└── export_trt.py             # export YOLO/DA2 to TensorRT FP16 engines
-
-config/
-├── default.yaml              # all tunable parameters
-└── .env.example              # SDK credentials template
-```
-
-## Configuration
-
-Key parameters in `config/default.yaml`:
-
-| Parameter | Default | Notes |
-|-----------|---------|-------|
-| `perception.yolo_model` | `yolo26m.pt` | auto-uses `yolo26m.engine` if exported |
-| `perception.depth_model` | `base` | small / base / large |
-| `control.arrival_distance` | `1.2` | metres — stops this far from target |
-| `control.arrival_bbox_frac` | `0.55` | stops if target fills >55% of frame height |
-| `control.steer_gain` | `0.25` | proportional gain for visual servo |
-| `planning.mppi_samples` | `512` | more samples = better paths, higher CPU |
 
 ## Hardware
 
-Tested on:
-- FrodoBots Earth Rover (Mini)
-- RTX 5070Ti (12 GB VRAM) for YOLO + depth inference
-
-Should work on any CUDA GPU. Falls back to CPU if CUDA isn't available (much slower).
+Tested on FrodoBots Earth Rover (Mini) with an RTX 5070 Ti (12 GB VRAM). A GPU is required for Qwen2-VL-2B; YOLO-World and DA2 will fall back to CPU but will be slow.
 
 ## Credits
 

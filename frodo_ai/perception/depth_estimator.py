@@ -152,11 +152,14 @@ class DepthEstimator:
             pred = self._da3_model.inference([image])
 
         depth = pred.depth.squeeze().astype(np.float32)
-
-        # Invert relative depth to pseudo-metric (same as DA2 fallback)
-        depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
-        depth = self.max_depth * (1.0 - depth)
         confidence = pred.conf.squeeze().astype(np.float32) if hasattr(pred, 'conf') and pred.conf is not None else None
+
+        # DA3 outputs relative depth in [0, 1] where 0 = closest, 1 = farthest.
+        # Normalise and scale to approximate metric metres (no inversion).
+        d_min, d_max = depth.min(), depth.max()
+        if d_max > d_min:
+            depth = (depth - d_min) / (d_max - d_min + 1e-6)
+        depth = depth * self.max_depth
 
         # Resize if needed
         if depth.shape != target_size:

@@ -116,9 +116,9 @@ hf_hub_download(
 
 Qwen2-VL-2B — downloads automatically on first run via Hugging Face.
 
-InternVL2-2B (optional, for `--vlm-model internvl`) — also downloads automatically:
+InternVL2-2B (optional, for `--vlm-model internvl`) — pre-download before first run (4.4 GB):
 ```bash
-python3 -c "from transformers import AutoModel; AutoModel.from_pretrained('OpenGVLab/InternVL2-2B', trust_remote_code=True)"
+hf download OpenGVLab/InternVL2-2B
 ```
 
 **4. Start the SDK**

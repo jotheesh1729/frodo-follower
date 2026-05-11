@@ -173,21 +173,22 @@ class MPPIController:
     """
 
     N       = 512    # trajectory samples
-    T       = 20     # horizon steps
-    DT      = 0.15   # seconds per step  →  3.0 s total horizon
+    T       = 10     # horizon steps
+    DT      = 0.10   # seconds per step  →  1.0 s total horizon (reactive for moving targets)
 
-    SIGMA_V = 0.12   # linear velocity perturbation std  (m/s)
-    SIGMA_W = 0.35   # angular velocity perturbation std (rad/s)
-    LAM     = 0.5    # MPPI temperature — lower is greedier
+    SIGMA_V = 0.10   # linear velocity perturbation std  (m/s)
+    SIGMA_W = 0.18   # angular velocity perturbation std (rad/s) — tight to avoid wild swings
+    LAM     = 2.0    # MPPI temperature — high = smooth weighted average, not greedy
 
     # Cost weights
     W_OBS_HIT   = 60.0    # base cost when trajectory hits an obstacle
     W_OBS_DEPTH = 25.0    # extra cost per metre of penetration into obstacle
     W_EMERGENCY = 300.0   # cost for any waypoint within 0.45 m of an obstacle
-    W_GOAL_BEAR = 10.0    # terminal bearing error cost
-    W_GOAL_DIST =  3.0    # terminal distance-to-goal cost
+    W_GOAL_BEAR =  4.0    # terminal bearing error cost
+    W_GOAL_DIST =  1.5    # terminal distance-to-goal cost (light — target is moving)
+    W_RUN_BEAR  =  0.4    # per-step bearing cost — prevents "swing wide then correct" plans
     W_EFFORT_V  =  0.05   # linear velocity effort regularisation
-    W_EFFORT_W  =  0.03   # angular velocity effort regularisation
+    W_EFFORT_W  =  0.15   # angular velocity effort regularisation — penalise sharp turns
 
     def __init__(self, fov_h_deg: float = 90.0):
         self.fov    = np.radians(fov_h_deg)
@@ -280,6 +281,13 @@ class MPPIController:
             # Emergency: obstacle very close in this direction regardless
             emerg  = ((d_at < 0.45).float()) * forward
             costs += emerg * self.W_EMERGENCY
+
+            # Per-step bearing cost — discourages "swing hard then correct" plans
+            s_dx   = tx - x
+            s_dy   = ty - y
+            s_bear = torch.atan2(s_dy, s_dx) - th
+            s_bear = torch.atan2(torch.sin(s_bear), torch.cos(s_bear))
+            costs += s_bear.abs() * self.W_RUN_BEAR
 
         # ── Terminal (horizon-end) goal cost ─────────────────────────────────
         dx = tx - x
@@ -599,13 +607,10 @@ class SmartNavigator:
             else:
                 self.status = f"Starting search for '{q}'…"
 
-            # MPPI already outputs clamped values; cap raw commands as a final guard
             raw_ang = float(np.clip(raw_ang, -0.50, 0.50))
 
-            # Light smoothing for hardware jitter; MPPI's horizon already provides
-            # temporal consistency so heavy EMA would only introduce lag
-            self.lin = self.lin * 0.4 + raw_lin * 0.6
-            self.ang = float(np.clip(self.ang * 0.3 + raw_ang * 0.7, -0.50, 0.50))
+            self.lin = self.lin * 0.5 + raw_lin * 0.5
+            self.ang = float(np.clip(self.ang * 0.55 + raw_ang * 0.45, -0.50, 0.50))
             send_cmd(self.lin, self.ang)
 
             self.frame_b64 = jpg_b64(self._annotate(frame, dets, q, result))

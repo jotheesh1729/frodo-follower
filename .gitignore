@@ -12,5 +12,6 @@ checkpoints/
 .DS_Store
 screenshots/
 CHANGES.md
+report/
 scripts/*.engine
 scripts/*.onnx

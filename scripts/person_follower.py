@@ -243,7 +243,7 @@ class PersonFollower:
     def run_loop(self):
         self._ready.wait()
         prev_t = time.time()
-        KP, KD = 0.28, 0.15
+        KP, KD = 0.25, 0.08
         _prev  = 0.0
 
         _prev_state          = None
@@ -398,9 +398,9 @@ class PersonFollower:
                             TrackerState.TRACKING, TrackerState.PREDICTING):
                         _prev     = norm_err
                         self.ang  = 0.0
-                    deriv    = float(np.clip((norm_err - _prev) / dt, -4.0, 4.0))
+                    deriv    = float(np.clip((norm_err - _prev) / dt, -2.0, 2.0))
                     _prev    = norm_err
-                    raw_ang  = float(np.clip(-(KP * norm_err + KD * deriv) + obs * 0.7, -0.50, 0.50))
+                    raw_ang  = float(np.clip(-(KP * norm_err + KD * deriv) + obs * 0.30, -0.40, 0.40))
                     slowdown = max(0.1, 1.0 - abs(norm_err))
                     dist     = result.distance
                     if dist <= TARGET_DIST:

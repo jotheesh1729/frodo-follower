@@ -330,7 +330,7 @@ class SmartNavigator:
     def run_loop(self):
         self._ready.wait()
         prev_t = time.time()
-        KP, KD         = 0.28, 0.15
+        KP, KD         = 0.25, 0.08
         TARGET_DIST    = 1.5
         _pid_prev            = 0.0
         _prev_state          = None
@@ -535,10 +535,10 @@ class SmartNavigator:
                 if result.distance <= ARRIVE_DIST:
                     self.status = f"Arrived at '{q}' ({result.distance:.1f} m)"
                 else:
-                    deriv     = float(np.clip((norm_err - _pid_prev) / dt, -4.0, 4.0))
+                    deriv     = float(np.clip((norm_err - _pid_prev) / dt, -2.0, 2.0))
                     _pid_prev = norm_err
                     raw_ang   = float(np.clip(
-                        -(KP * norm_err + KD * deriv) + obs * 0.7, -0.50, 0.50))
+                        -(KP * norm_err + KD * deriv) + obs * 0.30, -0.40, 0.40))
                     slowdown  = max(0.1, 1.0 - abs(norm_err))
                     raw_lin   = min(0.30, (result.distance - TARGET_DIST) * 0.3) * slowdown
                     self.status = f"→ '{q}'  {result.distance:.1f} m  {self.angle_deg:+.0f}°"

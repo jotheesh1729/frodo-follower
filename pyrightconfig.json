@@ -1,0 +1,9 @@
+{
+  "extraPaths": [
+    "frodo_ai/perception",
+    "third_party/Depth-Anything-V2",
+    "third_party/Depth-Anything-V2/metric_depth"
+  ],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
+}

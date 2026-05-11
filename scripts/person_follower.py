@@ -4,7 +4,7 @@
 # Run:  python3 scripts/person_follower.py
 # UI:   http://localhost:5001
 
-import sys, os, time, threading, base64, io
+import sys, os, time, threading, base64, io, argparse
 import numpy as np
 import cv2
 import requests
@@ -66,14 +66,15 @@ def depth_b64(depth):
 class VLMGuide(threading.Thread):
     """Background VLM thread — search guidance and obstacle bypass direction."""
 
-    def __init__(self):
+    def __init__(self, model_name="qwen"):
         super().__init__(daemon=True)
-        self._lock       = threading.Lock()
-        self._frame      = None
-        self._mode       = "search"   # "search" | "stuck"
-        self.hint        = None       # "left" | "center" | "right" | None
-        self.stuck_dir   = None       # "left" | "right" | None
-        self.status      = "VLM loading…"
+        self._lock        = threading.Lock()
+        self._frame       = None
+        self._mode        = "search"   # "search" | "stuck"
+        self._model_name  = model_name
+        self.hint         = None       # "left" | "center" | "right" | None
+        self.stuck_dir    = None       # "left" | "right" | None
+        self.status       = "VLM loading…"
 
     def submit(self, frame_rgb, mode="search"):
         with self._lock:
@@ -82,19 +83,16 @@ class VLMGuide(threading.Thread):
 
     def run(self):
         try:
-            from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
-            from qwen_vl_utils import process_vision_info
-            import torch
+            from vlm_backend import make_backend
         except ImportError:
-            self.status = "VLM unavailable (pip install transformers qwen-vl-utils)"
+            self.status = "VLM unavailable — vlm_backend.py not found"
             return
 
-        self.status = "Loading Qwen2-VL-2B…"
+        self.status = f"Loading {self._model_name}…"
         try:
-            model = Qwen2VLForConditionalGeneration.from_pretrained(
-                "Qwen/Qwen2-VL-2B-Instruct", torch_dtype=torch.float16, device_map="auto")
-            proc  = AutoProcessor.from_pretrained("Qwen/Qwen2-VL-2B-Instruct")
-            self.status = "VLM ready"
+            backend = make_backend(self._model_name)
+            backend.load()
+            self.status = f"{backend.name} ready"
         except Exception as e:
             self.status = f"VLM load failed: {e}"
             return
@@ -109,28 +107,17 @@ class VLMGuide(threading.Thread):
                 continue
 
             try:
-                from qwen_vl_utils import process_vision_info
-                import torch
                 if mode == "stuck":
-                    prompt = ("There is an obstacle directly ahead of a robot. "
-                              "Should it turn LEFT or RIGHT to go around? "
-                              "Reply with one word: LEFT or RIGHT.")
+                    prompt  = ("There is an obstacle directly ahead of a robot. "
+                               "Should it turn LEFT or RIGHT to go around? "
+                               "Reply with one word: LEFT or RIGHT.")
                     max_tok = 5
                 else:
-                    prompt = ("Do you see a person in this image? "
-                              "Reply with exactly one word: LEFT, RIGHT, CENTER, or NO.")
+                    prompt  = ("Do you see a person in this image? "
+                               "Reply with exactly one word: LEFT, RIGHT, CENTER, or NO.")
                     max_tok = 8
 
-                msgs = [{"role": "user", "content": [
-                    {"type": "image", "image": Image.fromarray(frame)},
-                    {"type": "text",  "text": prompt},
-                ]}]
-                text    = proc.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
-                imgs, _ = process_vision_info(msgs)
-                inp     = proc(text=[text], images=imgs, return_tensors="pt").to("cuda")
-                ids     = model.generate(**inp, max_new_tokens=max_tok)
-                ans     = proc.batch_decode([ids[0][len(inp.input_ids[0]):]],
-                                            skip_special_tokens=True)[0].strip().lower()
+                ans = backend.infer(Image.fromarray(frame), prompt, max_tok)
 
                 with self._lock:
                     if mode == "stuck":
@@ -148,19 +135,19 @@ class VLMGuide(threading.Thread):
 
 class PersonFollower:
 
-    def __init__(self):
-        self.running    = True
-        self.frame_b64  = ""
+    def __init__(self, vlm_model="qwen"):
+        self.running     = True
+        self.frame_b64   = ""
         self.depth_frame = ""
-        self.status     = "Loading models…"
-        self.lin        = 0.0
-        self.ang        = 0.0
-        self.locked     = False
-        self.fps        = 0.0
+        self.status      = "Loading models…"
+        self.lin         = 0.0
+        self.ang         = 0.0
+        self.locked      = False
+        self.fps         = 0.0
 
-        self._click     = None   # (nx, ny) normalised, set by UI click
-        self._clock     = threading.Lock()
-        self._ready     = threading.Event()
+        self._click  = None   # (nx, ny) normalised, set by UI click
+        self._clock  = threading.Lock()
+        self._ready  = threading.Event()
 
         self._yolo    = None
         self._depth   = None
@@ -170,7 +157,7 @@ class PersonFollower:
             reid_threshold=0.45,
             fov_h_deg=FOV_H_DEG,
         )
-        self._vlm = VLMGuide()
+        self._vlm = VLMGuide(model_name=vlm_model)
         self._vlm.start()
 
         threading.Thread(target=self._load_models, daemon=True).start()
@@ -259,14 +246,19 @@ class PersonFollower:
         KP, KD = 0.28, 0.15
         _prev  = 0.0
 
-        _prev_state      = None
-        _bypass_active   = False
-        _bypass_dir      = 1.0
-        _bypass_until    = 0.0
-        _bypass_cooldown = 0.0
-        _retry_bypass    = False
-        _last_search_vlm = 0.0
-        _last_stuck_vlm  = 0.0
+        _prev_state          = None
+        _bypass_active       = False
+        _bypass_dir          = 1.0
+        _bypass_until        = 0.0
+        _bypass_cooldown     = 0.0
+        _retry_bypass        = False
+        _last_search_vlm     = 0.0
+        _last_stuck_vlm      = 0.0
+        _last_tracked_dist   = float("inf")
+        _reacquire_active    = False
+        _reacquire_until     = 0.0
+        _reacquire_tried     = False
+        _reacquire_srch_end  = 0.0
 
         while self.running:
             t0     = time.time()
@@ -295,14 +287,18 @@ class PersonFollower:
                 if hit:
                     self._tracker.set_target("person")
                     self._tracker.update(frame, [hit], None, dt, self.ang, w, h)
-                    self.locked = True
-                    _prev = 0.0
-                    _bypass_active = False
-                    _bypass_cooldown = 0.0
-                    self._vlm.hint      = None
-                    self._vlm.stuck_dir = None
-                    _last_search_vlm    = 0.0
-                    _last_stuck_vlm     = 0.0
+                    self.locked          = True
+                    _prev                = 0.0
+                    _bypass_active       = False
+                    _bypass_cooldown     = 0.0
+                    self._vlm.hint       = None
+                    self._vlm.stuck_dir  = None
+                    _last_search_vlm     = 0.0
+                    _last_stuck_vlm      = 0.0
+                    _last_tracked_dist   = float("inf")
+                    _reacquire_active    = False
+                    _reacquire_tried     = False
+                    _reacquire_srch_end  = 0.0
 
             try:
                 depth_raw, _ = self._depth.estimate(frame)
@@ -395,6 +391,8 @@ class PersonFollower:
                     self.status = f"Going around… {'←' if _bypass_dir > 0 else '→'}"
 
                 elif result.state in (TrackerState.TRACKING, TrackerState.PREDICTING):
+                    _last_tracked_dist = result.distance
+                    _reacquire_tried   = False   # successful track — allow one future re-find
                     norm_err = result.angle / (np.radians(FOV_H_DEG) / 2)
                     if _just_ended or _prev_state not in (
                             TrackerState.TRACKING, TrackerState.PREDICTING):
@@ -412,29 +410,52 @@ class PersonFollower:
                         self.status = f"Following → {dist:.1f} m  {np.degrees(result.angle):+.0f}°"
 
                 elif result.state == TrackerState.SEARCHING:
-                    if (t0 - _last_search_vlm) >= 4.5 and not dets:
-                        self._vlm.submit(frame)
-                        _last_search_vlm = t0
-                    vlm_hint = self._vlm.hint
-                    if dets:
-                        raw_ang = 0.05 * result.search_direction + obs * 0.3
-                        self.status = "Possible person — confirming…"
-                    elif vlm_hint == "left":
-                        raw_ang = 0.20 + obs * 0.3
-                        self.status = "VLM: person is left — turning ←"
-                    elif vlm_hint == "right":
-                        raw_ang = -0.20 + obs * 0.3
-                        self.status = "VLM: person is right — turning →"
-                    elif vlm_hint == "center":
-                        raw_lin = 0.12; raw_ang = obs * 0.3
-                        self.status = "VLM: person ahead — moving forward"
+                    # Post-reacquire search window expired
+                    if _reacquire_tried and t0 > _reacquire_srch_end > 0:
+                        self.locked = False
+                        self.status = "Person lost — click to re-lock"
                     else:
-                        raw_ang = 0.18 * result.search_direction + obs * 0.3
-                        self.status = f"Searching… {int(result.search_progress * 100)}%"
+                        if (t0 - _last_search_vlm) >= 4.5 and not dets:
+                            self._vlm.submit(frame)
+                            _last_search_vlm = t0
+                        vlm_hint = self._vlm.hint
+                        if dets:
+                            raw_ang = 0.05 * result.search_direction + obs * 0.3
+                            self.status = "Possible person — confirming…"
+                        elif vlm_hint == "left":
+                            raw_ang = 0.20 + obs * 0.3
+                            self.status = "VLM: person is left — turning ←"
+                        elif vlm_hint == "right":
+                            raw_ang = -0.20 + obs * 0.3
+                            self.status = "VLM: person is right — turning →"
+                        elif vlm_hint == "center":
+                            raw_lin = 0.12; raw_ang = obs * 0.3
+                            self.status = "VLM: person ahead — moving forward"
+                        else:
+                            raw_ang = 0.18 * result.search_direction + obs * 0.3
+                            self.status = f"Searching… {int(result.search_progress * 100)}%"
 
                 elif result.state == TrackerState.LOST:
-                    self.locked = False
-                    self.status = "Person lost — click to re-lock"
+                    # Lost at close range — back up briefly and retry once
+                    if not _reacquire_tried and _last_tracked_dist < 3.5 and not _reacquire_active:
+                        _reacquire_active = True
+                        _reacquire_until  = t0 + 2.0
+                        raw_lin = -0.12
+                        self.status = "Person lost close — backing up to re-find…"
+                    elif _reacquire_active:
+                        if t0 < _reacquire_until:
+                            raw_lin = -0.12
+                            self.status = "Backing up to re-find person…"
+                        else:
+                            _reacquire_active   = False
+                            _reacquire_tried    = True
+                            _reacquire_srch_end = t0 + 8.0
+                            self._tracker.set_target("person")
+                            _last_search_vlm = 0.0
+                            self.status = "Re-searching for person…"
+                    else:
+                        self.locked = False
+                        self.status = "Person lost — click to re-lock"
 
             _prev_state = result.state
 
@@ -494,7 +515,13 @@ def stop():
 
 
 if __name__ == "__main__":
-    follower = PersonFollower()
+    parser = argparse.ArgumentParser(description="Person Follower")
+    parser.add_argument("--vlm-model", default="qwen",
+                        choices=["qwen", "internvl"],
+                        help="VLM backend: qwen (Qwen2-VL-2B) or internvl (InternVL2-2B)")
+    args = parser.parse_args()
+
+    follower = PersonFollower(vlm_model=args.vlm_model)
     threading.Thread(target=follower.run_loop, daemon=True).start()
-    print("Open http://localhost:5001")
+    print(f"Open http://localhost:5001  [VLM: {args.vlm_model}]")
     app.run(host="0.0.0.0", port=5001)

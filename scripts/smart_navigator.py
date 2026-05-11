@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Smart Navigator — YOLO-World + VLM verify + EKF tracker + DA3 depth
-# Run:  python3 scripts/smart_navigator.py
+# Run:  python3 scripts/smart_navigator.py [--vlm-model qwen|internvl]
 # UI:   http://localhost:5002
 
-import sys, os, time, threading, base64, io
+import sys, os, time, threading, base64, io, argparse
 import numpy as np
 import cv2
 import requests
@@ -28,6 +28,13 @@ CONF_HIGH   = 0.55
 CONF_LOW    = 0.28
 ARRIVE_DIST = 2.0
 VLM_EVERY   = 3.0
+
+# Spatial direction phrases — stripped from the query before YOLO/VLM
+_SPATIAL_PHRASES = [
+    (("on your left",  "to your left",  "on the left",  "to the left",  "left side"),  "left"),
+    (("on your right", "to your right", "on the right", "to the right", "right side"), "right"),
+    (("in front of you", "directly ahead", "straight ahead"),                           "center"),
+]
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -71,12 +78,13 @@ def depth_b64(depth):
 class VLMVerifier(threading.Thread):
     """Verifies YOLO crops (yes/no), guides search direction, and advises stuck recovery."""
 
-    def __init__(self):
+    def __init__(self, model_name="qwen"):
         super().__init__(daemon=True)
         self._lock           = threading.Lock()
         self._crop           = None
         self._crop_query     = ""
         self._mode           = "verify"   # "verify" | "search" | "stuck"
+        self._model_name     = model_name
         self.verified        = False
         self.verified_for    = ""
         self.search_hint     = None       # "left" | "center" | "right" | None
@@ -90,19 +98,16 @@ class VLMVerifier(threading.Thread):
 
     def run(self):
         try:
-            from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
-            from qwen_vl_utils import process_vision_info
-            import torch
+            from vlm_backend import make_backend
         except ImportError:
-            self.status = "VLM unavailable (pip install transformers qwen-vl-utils)"
+            self.status = "VLM unavailable — vlm_backend.py not found"
             return
 
-        self.status = "Loading Qwen2-VL-2B…"
+        self.status = f"Loading {self._model_name}…"
         try:
-            model = Qwen2VLForConditionalGeneration.from_pretrained(
-                "Qwen/Qwen2-VL-2B-Instruct", torch_dtype=torch.float16, device_map="auto")
-            proc  = AutoProcessor.from_pretrained("Qwen/Qwen2-VL-2B-Instruct")
-            self.status = "VLM ready"
+            backend = make_backend(self._model_name)
+            backend.load()
+            self.status = f"{backend.name} ready"
         except Exception as e:
             self.status = f"VLM load failed: {e}"
             return
@@ -117,32 +122,20 @@ class VLMVerifier(threading.Thread):
 
             self.status = f"VLM [{mode}] '{q}'…"
             try:
-                from qwen_vl_utils import process_vision_info
-                import torch
-
                 if mode == "verify":
-                    prompt = f"Does this image show a {q}? Reply only: yes or no."
+                    prompt  = f"Does this image show a {q}? Reply only: yes or no."
                     max_tok = 5
                 elif mode == "search":
-                    prompt = (f"Do you see a {q} in this image? "
-                              f"Reply with exactly one word: LEFT, RIGHT, CENTER, or NO.")
+                    prompt  = (f"Do you see a {q} in this image? "
+                               f"Reply with exactly one word: LEFT, RIGHT, CENTER, or NO.")
                     max_tok = 8
                 else:  # stuck
-                    prompt = ("There is an obstacle directly ahead of a robot. "
-                              "Should it turn LEFT or RIGHT to go around? "
-                              "Reply with one word: LEFT or RIGHT.")
+                    prompt  = ("There is an obstacle directly ahead of a robot. "
+                               "Should it turn LEFT or RIGHT to go around? "
+                               "Reply with one word: LEFT or RIGHT.")
                     max_tok = 5
 
-                msgs = [{"role": "user", "content": [
-                    {"type": "image", "image": Image.fromarray(crop)},
-                    {"type": "text",  "text": prompt},
-                ]}]
-                text    = proc.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
-                imgs, _ = process_vision_info(msgs)
-                inp     = proc(text=[text], images=imgs, return_tensors="pt").to("cuda")
-                ids     = model.generate(**inp, max_new_tokens=max_tok)
-                ans     = proc.batch_decode([ids[0][len(inp.input_ids[0]):]],
-                                            skip_special_tokens=True)[0].strip().lower()
+                ans = backend.infer(Image.fromarray(crop), prompt, max_tok)
 
                 if mode == "verify":
                     ok = ans.startswith("yes")
@@ -151,8 +144,8 @@ class VLMVerifier(threading.Thread):
                     self.status = f"{'✓' if ok else '✗'} '{q}' → {ans}"
 
                 elif mode == "search":
-                    if "left"   in ans: hint = "left"
-                    elif "right" in ans: hint = "right"
+                    if   "left"   in ans: hint = "left"
+                    elif "right"  in ans: hint = "right"
                     elif "center" in ans or "middle" in ans: hint = "center"
                     else: hint = None
                     with self._lock:
@@ -173,7 +166,7 @@ class VLMVerifier(threading.Thread):
 
 class SmartNavigator:
 
-    def __init__(self):
+    def __init__(self, vlm_model="qwen"):
         self.running   = True
         self.frame_b64 = ""
         self.depth_b64 = ""
@@ -184,16 +177,18 @@ class SmartNavigator:
         self.angle_deg = None
         self.fps       = 0.0
 
-        self._pend_q      = ""
-        self._active_q    = ""
+        self._pend_q        = ""
+        self._active_q      = ""
         self._active_base_q = ""
-        self._qlock       = threading.Lock()
-        self._last_vlm    = 0.0
+        self._active_vlm_q  = ""       # query sent to VLM (spatial phrases stripped)
+        self._active_spatial = None    # "left" | "right" | "center" | None
+        self._qlock         = threading.Lock()
+        self._last_vlm      = 0.0
 
         self._yolo    = None
         self._depth   = None
         self._tracker = None
-        self._vlm     = VLMVerifier()
+        self._vlm     = VLMVerifier(model_name=vlm_model)
         self._vlm.start()
         self._ready   = threading.Event()
         threading.Thread(target=self._load_models, daemon=True).start()
@@ -203,8 +198,6 @@ class SmartNavigator:
             self.status = "Loading YOLO-World…"
             from ultralytics import YOLOWorld
             self._yolo = YOLOWorld(os.path.join(_ROOT, "yolov8s-worldv2.pt"))
-            # CLIP tokenize() always returns CPU tensors but the model is on CUDA.
-            # Patch encode_text to move tokens to the right device before indexing.
             try:
                 import clip.model as _cm
                 _orig_enc = _cm.CLIP.encode_text
@@ -237,23 +230,44 @@ class SmartNavigator:
             return self._pend_q
 
     @staticmethod
-    def _base_query(q: str) -> str:
-        """Extract a simple YOLO-compatible noun from a descriptive query.
+    def _parse_query(q: str):
+        """Split a full query into (vlm_desc, yolo_noun, spatial_dir).
 
-        'person with brown shirt' → 'person'
-        'red chair'               → 'chair'
-        'blue bottle'             → 'bottle'
-        'tv'                      → 'tv'
+        "tv on your left"     → ("tv",                  "tv",      "left")
+        "red chair on right"  → ("red chair",            "chair",   "right")
+        "person on the chair" → ("person on the chair",  "person",  None)
+        "monitor"             → ("monitor",              "monitor", None)
         """
         low = q.lower().strip()
+        spatial_dir = None
+
+        for phrases, direction in _SPATIAL_PHRASES:
+            for phrase in phrases:
+                if phrase in low:
+                    cleaned = low.replace(phrase, "").strip().strip(",").strip()
+                    if cleaned:
+                        low = cleaned
+                    spatial_dir = direction
+                    break
+            if spatial_dir:
+                break
+
+        yolo_noun = SmartNavigator._base_query(low)
+        return low, yolo_noun, spatial_dir
+
+    @staticmethod
+    def _base_query(q: str) -> str:
+        """Extract a simple YOLO-compatible noun from a descriptive query."""
+        low = q.lower().strip()
         for sep in (' with ', ' in ', ' wearing ', ' holding ', ' near ',
-                    ' next to ', ' that ', ' having ', ' by ', ' beside '):
+                    ' next to ', ' that ', ' having ', ' by ', ' beside ',
+                    ' on ',  ' at '):
             if sep in low:
                 low = low.split(sep)[0].strip()
                 break
         words = low.split()
         if len(words) > 1:
-            return words[-1]   # last word is typically the noun
+            return words[-1]
         return words[0] if words else q
 
     def _detect(self, frame, q):
@@ -275,20 +289,22 @@ class SmartNavigator:
                 })
         return dets
 
-    def _trust(self, det, q):
-        is_descriptive = q.lower().strip() != self._active_base_q.lower().strip()
-        if is_descriptive:
-            # Full description must be confirmed by VLM — high YOLO conf alone isn't enough
-            return self._vlm.verified and self._vlm.verified_for == q
+    def _trust(self, det):
+        """Return True if this detection should be considered reliable."""
+        vlm_q   = self._active_vlm_q
+        base_q  = self._active_base_q
+        is_desc = vlm_q.lower().strip() != base_q.lower().strip()
+        if is_desc:
+            return self._vlm.verified and self._vlm.verified_for == vlm_q
         if det["confidence"] >= CONF_HIGH:
             return True
-        return self._vlm.verified and self._vlm.verified_for == q
+        return self._vlm.verified and self._vlm.verified_for == vlm_q
 
-    def _annotate(self, frame, dets, q, result):
+    def _annotate(self, frame, dets, result):
         out = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         for d in dets:
             x1, y1, x2, y2 = (int(v) for v in d["bbox"])
-            col = (0, 220, 80) if self._trust(d, q) else (0, 200, 200)
+            col = (0, 220, 80) if self._trust(d) else (0, 200, 200)
             cv2.rectangle(out, (x1, y1), (x2, y2), col, 2)
             cv2.putText(out, f"{d['class']} {d['confidence']:.0%}",
                         (x1, max(y1 - 5, 0)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1)
@@ -316,14 +332,19 @@ class SmartNavigator:
         prev_t = time.time()
         KP, KD         = 0.28, 0.15
         TARGET_DIST    = 1.5
-        _pid_prev        = 0.0
-        _prev_state      = None
-        _bypass_active   = False
-        _bypass_dir      = 1.0
-        _bypass_until    = 0.0
-        _bypass_cooldown = 0.0   # earliest time bypass can re-trigger
-        _retry_bypass    = False  # one free re-trigger after failed bypass
-        _last_search_vlm = 0.0   # last time a search-guidance query was sent
+        _pid_prev            = 0.0
+        _prev_state          = None
+        _bypass_active       = False
+        _bypass_dir          = 1.0
+        _bypass_until        = 0.0
+        _bypass_cooldown     = 0.0
+        _retry_bypass        = False
+        _last_search_vlm     = 0.0
+        _last_tracked_dist   = float("inf")
+        _reacquire_active    = False
+        _reacquire_until     = 0.0
+        _reacquire_tried     = False
+        _reacquire_srch_end  = 0.0     # deadline for the post-backup search window
 
         while self.running:
             t0  = time.time()
@@ -334,24 +355,34 @@ class SmartNavigator:
                 pend = self._pend_q
             if pend != self._active_q:
                 self._active_q = pend
-                base_q = self._base_query(pend) if pend else ""
-                self._active_base_q = base_q
+                if pend:
+                    vlm_q, base_q, spatial = self._parse_query(pend)
+                else:
+                    vlm_q, base_q, spatial = "", "", None
+                self._active_base_q  = base_q
+                self._active_vlm_q   = vlm_q
+                self._active_spatial = spatial
                 if pend:
                     self._yolo.set_classes([base_q])
                     self._tracker.set_target(base_q)
                     self._last_vlm = 0.0
                     if base_q != pend:
-                        print(f"[NAV] Descriptive query '{pend}' → YOLO class '{base_q}', VLM verifies full description")
+                        print(f"[NAV] '{pend}' → YOLO='{base_q}' vlm='{vlm_q}'"
+                              + (f" spatial={spatial}" if spatial else ""))
                 else:
                     self._tracker.reset()
                 self._vlm.verified        = False
                 self._vlm.search_hint     = None
                 self._vlm.stuck_hint      = None
-                _pid_prev        = 0.0
-                _bypass_active   = False
-                _bypass_cooldown = 0.0
-                _retry_bypass    = False
-                _last_search_vlm = 0.0
+                _pid_prev            = 0.0
+                _bypass_active       = False
+                _bypass_cooldown     = 0.0
+                _retry_bypass        = False
+                _last_search_vlm     = 0.0
+                _last_tracked_dist   = float("inf")
+                _reacquire_active    = False
+                _reacquire_tried     = False
+                _reacquire_srch_end  = 0.0
 
             q     = self._active_q
             frame = get_frame()
@@ -373,22 +404,29 @@ class SmartNavigator:
                 time.sleep(0.10)
                 continue
 
-            dets = self._detect(frame, q)
+            dets = self._detect(frame, self._active_base_q)
 
+            # Spatial filter — keep only detections on the requested side
+            if self._active_spatial == "left":
+                dets = [d for d in dets if d["center_x"] < w * 0.50]
+            elif self._active_spatial == "right":
+                dets = [d for d in dets if d["center_x"] > w * 0.50]
+            elif self._active_spatial == "center":
+                dets = [d for d in dets if w * 0.25 < d["center_x"] < w * 0.75]
+
+            # Periodic VLM verification on best detection
             if dets and (t0 - self._last_vlm) >= VLM_EVERY:
                 best = max(dets, key=lambda d: d["confidence"])
                 x1, y1, x2, y2 = (int(v) for v in best["bbox"])
                 crop = frame[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
                 if crop.size > 0:
-                    self._vlm.submit(crop, q)
+                    self._vlm.submit(crop, self._active_vlm_q)
                     self._last_vlm = t0
 
-            trusted = [d for d in dets if self._trust(d, q)]
+            trusted = [d for d in dets if self._trust(d)]
 
-            # Once we have a prior EKF estimate, commit to exactly ONE detection —
-            # whichever is closest to the predicted angle — in ALL states.
-            # Identical objects (2 TVs, 2 chairs) have the same appearance histogram
-            # so spatial commitment is the only reliable discriminator.
+            # Spatial commitment: once EKF is initialised, lock to the detection
+            # nearest the predicted bearing — prevents jumping to a second instance.
             if self._tracker._initialized and len(trusted) > 0:
                 _fov  = np.radians(FOV_H_DEG)
                 _pred = float(self._tracker._x[0])
@@ -413,32 +451,26 @@ class SmartNavigator:
             raw_lin, raw_ang = 0.0, 0.0
             self.distance = self.angle_deg = None
 
-            # 5-band horizontal depth scan — finds the widest gap for bypass direction
+            # 5-band horizontal depth scan
             dh, dw = depth.shape
-            _strip = depth[int(dh*0.3):int(dh*0.8), :]
-            _bw    = dw // 5
+            _strip  = depth[int(dh*0.3):int(dh*0.8), :]
+            _bw     = dw // 5
             d_bands = [float(np.median(_strip[:, i*_bw:(i+1)*_bw])) for i in range(5)]
-            # Aggregate for backward-compatible L/C/R names
-            d_L = min(d_bands[0], d_bands[1])
             d_C = d_bands[2]
-            d_R = min(d_bands[3], d_bands[4])
-            # Repulsion field: each band pushes the robot away proportional to closeness
-            _thresh = 1.2
             obs = 0.0
             for _i, _d in enumerate(d_bands):
-                if _d < _thresh:
-                    _push = (_thresh - _d) / _thresh          # 0→1, stronger when closer
-                    _side = (_i - 2) / 2.0                    # -1=far-left … +1=far-right
-                    obs  -= _push * _side * 0.35              # push away from obstacle
+                if _d < 1.2:
+                    _push = (1.2 - _d) / 1.2
+                    _side = (_i - 2) / 2.0
+                    obs  -= _push * _side * 0.35
             obs = float(np.clip(obs, -1.0, 1.0))
 
-            # Apply any pending stuck_hint from VLM to set bypass direction for retry
+            # Apply any VLM stuck hint for bypass direction
             if _retry_bypass and self._vlm.stuck_hint is not None:
                 _bypass_dir = 1.0 if self._vlm.stuck_hint == "left" else -1.0
                 self._vlm.stuck_hint = None
 
-            # Start bypass when obstacle blocks path.
-            # _retry_bypass allows one re-trigger from any state after a failed bypass.
+            # Bypass trigger
             if (not _bypass_active
                     and t0 >= _bypass_cooldown
                     and (result.state in (TrackerState.TRACKING, TrackerState.PREDICTING)
@@ -447,7 +479,6 @@ class SmartNavigator:
                 _bypass_active = True
                 _bypass_until  = t0 + 3.0
                 if not _retry_bypass:
-                    # Pick the side with the widest gap from the 5-band scan
                     left_gap  = min(d_bands[0], d_bands[1])
                     right_gap = min(d_bands[3], d_bands[4])
                     if abs(left_gap - right_gap) > 0.2:
@@ -458,34 +489,32 @@ class SmartNavigator:
                 print(f"[NAV] Bypass → {'L' if _bypass_dir>0 else 'R'}  "
                       f"bands={[f'{d:.1f}' for d in d_bands]}")
 
-            # Bypass ends when path clears or timer expires
+            # Bypass end
             _bypass_just_ended = False
             if _bypass_active and (t0 >= _bypass_until or d_C >= 1.2):
-                path_cleared      = d_C >= 1.2
-                _bypass_active    = False
+                path_cleared       = d_C >= 1.2
+                _bypass_active     = False
                 _bypass_just_ended = True
                 if path_cleared:
                     _bypass_cooldown = t0 + 3.0
                 else:
-                    # Timer expired, still blocked — flip direction and retry once
                     _bypass_dir      = -_bypass_dir
                     _retry_bypass    = True
-                    _bypass_cooldown = t0 + 0.3   # tiny pause before retry
-                    self._vlm.submit(frame, q, mode="stuck")   # async, may arrive later
-                    print(f"[NAV] Bypass timed out, still blocked — retrying {'L' if _bypass_dir>0 else 'R'}")
+                    _bypass_cooldown = t0 + 0.3
+                    self._vlm.submit(frame, self._active_vlm_q, mode="stuck")
+                    print(f"[NAV] Bypass timed out — retrying {'L' if _bypass_dir>0 else 'R'}")
 
             if d_C < 0.6:
-                # Emergency backup — short cooldown + queue a bypass so arc fires right after
+                # Emergency backup
                 _bypass_active   = False
                 _bypass_cooldown = t0 + 0.3
                 _retry_bypass    = True
-                self._vlm.submit(frame, q, mode="stuck")   # async direction advice
+                self._vlm.submit(frame, self._active_vlm_q, mode="stuck")
                 raw_lin = -0.15
-                raw_ang = obs * 0.4                         # rotate while reversing
+                raw_ang = obs * 0.4
                 self.status = "Obstacle! Backing up…"
 
             elif _bypass_active:
-                # Arc around obstacle; EKF keeps predicting where the target is
                 raw_ang = _bypass_dir * 0.40 + obs * 0.25
                 raw_lin = 0.13
                 self.distance  = result.distance
@@ -493,12 +522,11 @@ class SmartNavigator:
                 self.status = f"Going around… {'←' if _bypass_dir > 0 else '→'}"
 
             elif result.state in (TrackerState.TRACKING, TrackerState.PREDICTING):
+                _last_tracked_dist = result.distance
+                _reacquire_tried   = False   # successful track — allow one future re-find
                 norm_err = result.angle / (np.radians(FOV_H_DEG) / 2)
                 if _bypass_just_ended or _prev_state not in (
                         TrackerState.TRACKING, TrackerState.PREDICTING):
-                    # First tracking frame after search or bypass — stale _pid_prev
-                    # would produce a huge derivative spike, and self.ang still carries
-                    # spin momentum from the search rotation.
                     _pid_prev = norm_err
                     self.ang  = 0.0
                 _bypass_active = False
@@ -518,36 +546,62 @@ class SmartNavigator:
             elif result.state == TrackerState.SEARCHING:
                 _bypass_active = False
 
-                # Periodically ask VLM where the target is
-                if (t0 - _last_search_vlm) >= VLM_EVERY * 1.5 and not dets:
-                    self._vlm.submit(frame, q, mode="search")
-                    _last_search_vlm = t0
-
-                # Use VLM search hint if it matches the current query
-                vlm_dir = (self._vlm.search_hint
-                           if self._vlm.search_hint_for == q else None)
-
-                if dets:
-                    raw_ang = 0.05 * result.search_direction + obs * 0.3
-                    self.status = f"Possible '{q}' — verifying…"
-                elif vlm_dir == "left":
-                    raw_ang = 0.20 + obs * 0.3
-                    self.status = f"VLM: '{q}' is left — turning ←"
-                elif vlm_dir == "right":
-                    raw_ang = -0.20 + obs * 0.3
-                    self.status = f"VLM: '{q}' is right — turning →"
-                elif vlm_dir == "center":
-                    raw_lin = 0.12
-                    raw_ang = obs * 0.3
-                    self.status = f"VLM: '{q}' is ahead — moving forward"
+                # Post-reacquire search window expired — declare final result
+                if _reacquire_tried and t0 > _reacquire_srch_end > 0:
+                    if _last_tracked_dist <= ARRIVE_DIST:
+                        self.status = f"Arrived at '{q}' (~{_last_tracked_dist:.1f} m)"
+                    else:
+                        self.status = f"Lost '{q}' — set a new target"
                 else:
-                    raw_ang = 0.18 * result.search_direction + obs * 0.3
-                    if abs(obs) > 0.1:
-                        raw_lin = 0.10
-                    self.status = f"Searching '{q}'…  {int(result.search_progress * 100)}%"
+                    # Periodically ask VLM where the target is
+                    if (t0 - _last_search_vlm) >= VLM_EVERY * 1.5 and not dets:
+                        self._vlm.submit(frame, self._active_vlm_q, mode="search")
+                        _last_search_vlm = t0
+
+                    vlm_dir = (self._vlm.search_hint
+                               if self._vlm.search_hint_for == self._active_vlm_q else None)
+
+                    if dets:
+                        raw_ang = 0.05 * result.search_direction + obs * 0.3
+                        self.status = f"Possible '{q}' — verifying…"
+                    elif vlm_dir == "left":
+                        raw_ang = 0.20 + obs * 0.3
+                        self.status = f"VLM: '{q}' is left — turning ←"
+                    elif vlm_dir == "right":
+                        raw_ang = -0.20 + obs * 0.3
+                        self.status = f"VLM: '{q}' is right — turning →"
+                    elif vlm_dir == "center":
+                        raw_lin = 0.12
+                        raw_ang = obs * 0.3
+                        self.status = f"VLM: '{q}' ahead — moving forward"
+                    else:
+                        raw_ang = 0.18 * result.search_direction + obs * 0.3
+                        if abs(obs) > 0.1:
+                            raw_lin = 0.10
+                        self.status = f"Searching '{q}'…  {int(result.search_progress * 100)}%"
 
             elif result.state == TrackerState.LOST:
-                self.status = f"Lost '{q}' — set a new target"
+                # Lost at close range — back up briefly and retry before giving up
+                if not _reacquire_tried and _last_tracked_dist < 3.5 and not _reacquire_active:
+                    _reacquire_active = True
+                    _reacquire_until  = t0 + 2.0
+                    raw_lin = -0.12
+                    self.status = f"Lost '{q}' close — backing up to re-find…"
+                elif _reacquire_active:
+                    if t0 < _reacquire_until:
+                        raw_lin = -0.12
+                        self.status = f"Backing up to re-find '{q}'…"
+                    else:
+                        # Backup done — restart the tracker for a short search window
+                        _reacquire_active   = False
+                        _reacquire_tried    = True
+                        _reacquire_srch_end = t0 + 8.0
+                        self._tracker.set_target(self._active_base_q)
+                        _last_search_vlm = 0.0
+                        self.status = f"Re-searching for '{q}'…"
+                else:
+                    self.status = f"Lost '{q}' — set a new target"
+
             else:
                 self.status = f"Starting search for '{q}'…"
 
@@ -558,7 +612,7 @@ class SmartNavigator:
             self.ang = float(np.clip(self.ang * 0.45 + raw_ang * 0.55, -0.50, 0.50))
             send_cmd(self.lin, self.ang)
 
-            self.frame_b64 = jpg_b64(self._annotate(frame, dets, q, result))
+            self.frame_b64 = jpg_b64(self._annotate(frame, dets, result))
             self.depth_b64 = depth_b64(depth)
 
             elapsed = time.time() - t0
@@ -592,7 +646,7 @@ def state():
         "angle":    nav.angle_deg,
         "linear":   nav.lin,
         "angular":  nav.ang,
-        "verified": nav._vlm.verified and nav._vlm.verified_for == nav.get_query(),
+        "verified": nav._vlm.verified and nav._vlm.verified_for == nav._active_vlm_q,
         "fps":      round(nav.fps, 1),
     })
 
@@ -613,7 +667,13 @@ def stop_robot():
 
 
 if __name__ == "__main__":
-    nav = SmartNavigator()
+    parser = argparse.ArgumentParser(description="Smart Navigator")
+    parser.add_argument("--vlm-model", default="qwen",
+                        choices=["qwen", "internvl"],
+                        help="VLM backend: qwen (Qwen2-VL-2B) or internvl (InternVL2-2B)")
+    args = parser.parse_args()
+
+    nav = SmartNavigator(vlm_model=args.vlm_model)
     threading.Thread(target=nav.run_loop, daemon=True).start()
-    print("Open http://localhost:5002")
+    print(f"Open http://localhost:5002  [VLM: {args.vlm_model}]")
     app.run(host="0.0.0.0", port=5002)

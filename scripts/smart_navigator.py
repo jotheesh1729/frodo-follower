@@ -10,7 +10,6 @@ import requests
 from PIL import Image
 from flask import Flask, request, jsonify
 import logging
-import torch
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 for _p in [
@@ -70,18 +69,19 @@ def depth_b64(depth):
 # ── VLM verifier ──────────────────────────────────────────────────────────────
 
 class VLMVerifier(threading.Thread):
-    """Verifies YOLO crops (yes/no) and guides search rotation direction."""
+    """Verifies YOLO crops (yes/no), guides search direction, and advises stuck recovery."""
 
     def __init__(self):
         super().__init__(daemon=True)
         self._lock           = threading.Lock()
         self._crop           = None
         self._crop_query     = ""
-        self._mode           = "verify"   # "verify" | "search"
+        self._mode           = "verify"   # "verify" | "search" | "stuck"
         self.verified        = False
         self.verified_for    = ""
         self.search_hint     = None       # "left" | "center" | "right" | None
         self.search_hint_for = ""
+        self.stuck_hint      = None       # "left" | "right" | None
         self.status          = "VLM loading…"
 
     def submit(self, crop_rgb, query, mode="verify"):
@@ -123,10 +123,15 @@ class VLMVerifier(threading.Thread):
                 if mode == "verify":
                     prompt = f"Does this image show a {q}? Reply only: yes or no."
                     max_tok = 5
-                else:  # search
+                elif mode == "search":
                     prompt = (f"Do you see a {q} in this image? "
                               f"Reply with exactly one word: LEFT, RIGHT, CENTER, or NO.")
                     max_tok = 8
+                else:  # stuck
+                    prompt = ("There is an obstacle directly ahead of a robot. "
+                              "Should it turn LEFT or RIGHT to go around? "
+                              "Reply with one word: LEFT or RIGHT.")
+                    max_tok = 5
 
                 msgs = [{"role": "user", "content": [
                     {"type": "image", "image": Image.fromarray(crop)},
@@ -143,9 +148,9 @@ class VLMVerifier(threading.Thread):
                     ok = ans.startswith("yes")
                     with self._lock:
                         self.verified, self.verified_for = ok, q
-                    self.status = f"{'ok' if ok else 'no'} '{q}'"
+                    self.status = f"{'✓' if ok else '✗'} '{q}' → {ans}"
 
-                else:  # search
+                elif mode == "search":
                     if "left"   in ans: hint = "left"
                     elif "right" in ans: hint = "right"
                     elif "center" in ans or "middle" in ans: hint = "center"
@@ -154,172 +159,14 @@ class VLMVerifier(threading.Thread):
                         self.search_hint, self.search_hint_for = hint, q
                     self.status = f"Search: '{q}' → {hint or 'not found'}"
 
+                else:  # stuck
+                    hint = "left" if "left" in ans else ("right" if "right" in ans else None)
+                    with self._lock:
+                        self.stuck_hint = hint
+                    self.status = f"Stuck guidance: → {hint or '?'}"
+
             except Exception as e:
                 self.status = f"VLM error: {e}"
-
-
-# ── MPPI controller ───────────────────────────────────────────────────────────
-
-class MPPIController:
-    """
-    Mapless Model Predictive Path Integral controller.
-
-    Uses the live depth frame as a one-shot local obstacle map — no persistent
-    map required.  Jointly optimises target tracking and obstacle avoidance in
-    a single cost function, replacing the PD + bypass-arc approach.
-
-    All trajectory rollouts are batched as tensor operations so the hot path
-    runs entirely on GPU (or CPU if unavailable).
-    """
-
-    N       = 512    # trajectory samples
-    T       = 15     # horizon steps
-    DT      = 0.10   # seconds per step  →  1.5 s total horizon
-
-    SIGMA_V = 0.15   # linear velocity perturbation std  (m/s)
-    SIGMA_W = 0.25   # angular velocity perturbation std (rad/s)
-    LAM     = 0.8    # MPPI temperature — low enough to commit, high enough not to be jerky
-
-    # Cost weights
-    W_OBS_HIT   = 60.0    # base cost when trajectory hits an obstacle
-    W_OBS_DEPTH = 25.0    # extra cost per metre of penetration into obstacle
-    W_EMERGENCY = 300.0   # cost for any waypoint within 0.45 m of an obstacle
-    W_GOAL_BEAR =  6.0    # terminal bearing error cost
-    W_GOAL_DIST =  4.0    # terminal distance-to-goal cost — drives forward motion
-    W_RUN_BEAR  =  0.3    # per-step bearing cost — prevents "swing wide then correct" plans
-    W_EFFORT_V  =  0.05   # linear velocity effort regularisation
-    W_EFFORT_W  =  0.08   # angular velocity effort regularisation
-
-    def __init__(self, fov_h_deg: float = 90.0):
-        self.fov    = np.radians(fov_h_deg)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._U: torch.Tensor = torch.zeros(self.T, 2, device=self.device)
-        print(f"[MPPI] running on {self.device}  N={self.N}  T={self.T}  dt={self.DT}s")
-
-    def reset(self):
-        """Clear nominal control sequence — call when target changes or robot is stuck."""
-        self._U = torch.zeros(self.T, 2, device=self.device)
-
-    @torch.no_grad()
-    def step(
-        self,
-        depth_np: np.ndarray,
-        target_angle: float,
-        target_dist: float,
-    ) -> tuple[float, float]:
-        """
-        Compute optimal (v, w) for this timestep.
-
-        depth_np:     H×W float32 depth map in metres
-        target_angle: EKF bearing to target, radians  (+ve = camera-right, same as pixel_to_angle)
-        target_dist:  EKF range to target, metres
-
-        Returns (v_cmd, w_cmd) as Python floats.
-        """
-        dev = self.device
-        N, T, dt = self.N, self.T, self.DT
-
-        depth = torch.as_tensor(depth_np, dtype=torch.float32, device=dev)
-        dh, dw = depth.shape
-
-        # Per-column minimum depth in the obstacle band (30 %–70 % of frame).
-        # Min gives the tightest obstacle at each bearing — conservative and correct.
-        r0, r1    = int(dh * 0.30), int(dh * 0.70)
-        depth_col = depth[r0:r1, :].min(dim=0).values   # (dw,)
-
-        # Focal length: pixels per radian horizontally
-        focal = float(dw) / (2.0 * np.tan(self.fov / 2.0))
-
-        # ── Sample noise perturbations [N, T, 2] ─────────────────────────────
-        eps = torch.randn(N, T, 2, device=dev)
-        eps[:, :, 0].mul_(self.SIGMA_V)
-        eps[:, :, 1].mul_(self.SIGMA_W)
-
-        # Perturbed control sequences — broadcast nominal [1,T,2] + noise [N,T,2]
-        V = self._U.unsqueeze(0) + eps          # [N, T, 2]
-        V[:, :, 0].clamp_(-0.15, 0.35)         # linear:  reverse → max forward
-        V[:, :, 1].clamp_(-0.50, 0.50)         # angular: hard cap matches PD limit
-
-        # ── Simulate N trajectories in parallel ───────────────────────────────
-        # All start at the robot origin facing forward (ego-centric frame)
-        x  = torch.zeros(N, device=dev)
-        y  = torch.zeros(N, device=dev)
-        th = torch.zeros(N, device=dev)
-        costs = torch.zeros(N, device=dev)
-
-        # Target position in ego frame (held fixed over horizon — valid for 3 s).
-        # pixel_to_angle returns +ve for camera-right, but simulation uses standard
-        # math where +y = left, so we negate the lateral component.
-        tx = float(target_dist * np.cos(target_angle))
-        ty = float(-target_dist * np.sin(target_angle))
-
-        for t in range(T):
-            v  = V[:, t, 0]
-            w  = V[:, t, 1]
-
-            # Unicycle kinematics
-            x  = x  + v * torch.cos(th) * dt
-            y  = y  + v * torch.sin(th) * dt
-            th = th + w * dt
-
-            # Only penalise waypoints in front of the camera
-            forward = (x > 0.15).float()
-
-            # Project waypoint into depth image column.
-            # Standard math: +y = left, so rightward paths have bear_wp < 0.
-            # Image convention: right = px > dw/2, so negate to match.
-            bear_wp = torch.atan2(y, x)                          # horiz bearing
-            dist_wp = torch.hypot(x, y)                          # range to waypoint
-            px = (dw / 2.0 - bear_wp * focal).long().clamp_(0, dw - 1)
-            d_at = depth_col[px]                                  # obstacle depth there
-
-            # Collision: obstacle is closer than the waypoint
-            hit     = ((d_at < dist_wp).float()) * forward
-            penetr  = (dist_wp - d_at).clamp(min=0.0)
-            costs  += hit * (self.W_OBS_HIT + penetr * self.W_OBS_DEPTH)
-
-            # Emergency: obstacle very close in this direction regardless
-            emerg  = ((d_at < 0.45).float()) * forward
-            costs += emerg * self.W_EMERGENCY
-
-            # Per-step bearing cost — discourages "swing hard then correct" plans
-            s_dx   = tx - x
-            s_dy   = ty - y
-            s_bear = torch.atan2(s_dy, s_dx) - th
-            s_bear = torch.atan2(torch.sin(s_bear), torch.cos(s_bear))
-            costs += s_bear.abs() * self.W_RUN_BEAR
-
-        # ── Terminal (horizon-end) goal cost ─────────────────────────────────
-        dx = tx - x
-        dy = ty - y
-        g_dist  = torch.hypot(dx, dy)
-        g_bear  = torch.atan2(dy, dx) - th
-        g_bear  = torch.atan2(torch.sin(g_bear), torch.cos(g_bear))   # wrap to [-π, π]
-        costs  += g_bear.abs() * self.W_GOAL_BEAR + g_dist * self.W_GOAL_DIST
-
-        # ── Control effort penalty ────────────────────────────────────────────
-        costs += V[:, :, 0].pow(2).sum(1) * self.W_EFFORT_V
-        costs += V[:, :, 1].pow(2).sum(1) * self.W_EFFORT_W
-
-        # ── MPPI weight update ────────────────────────────────────────────────
-        beta   = costs.min()
-        w_mppi = torch.exp(-(costs - beta) / self.LAM)
-        w_mppi = w_mppi / (w_mppi.sum() + 1e-8)
-
-        # Weighted noise → update nominal sequence
-        delta   = (w_mppi.view(N, 1, 1) * eps).sum(0)    # [T, 2]
-        self._U = self._U + delta
-        self._U[:, 0].clamp_(-0.15, 0.35)
-        self._U[:, 1].clamp_(-0.50, 0.50)
-
-        v_out = float(self._U[0, 0])
-        w_out = float(self._U[0, 1])
-
-        # Receding horizon — shift sequence forward, zero-pad tail
-        self._U = torch.roll(self._U, -1, dims=0)
-        self._U[-1] = 0.0
-
-        return v_out, w_out
 
 
 # ── navigator ─────────────────────────────────────────────────────────────────
@@ -348,7 +195,6 @@ class SmartNavigator:
         self._tracker = None
         self._vlm     = VLMVerifier()
         self._vlm.start()
-        self._mppi    = MPPIController(fov_h_deg=FOV_H_DEG)
         self._ready   = threading.Event()
         threading.Thread(target=self._load_models, daemon=True).start()
 
@@ -468,7 +314,16 @@ class SmartNavigator:
     def run_loop(self):
         self._ready.wait()
         prev_t = time.time()
-        _last_search_vlm = 0.0
+        KP, KD         = 0.28, 0.15
+        TARGET_DIST    = 1.5
+        _pid_prev        = 0.0
+        _prev_state      = None
+        _bypass_active   = False
+        _bypass_dir      = 1.0
+        _bypass_until    = 0.0
+        _bypass_cooldown = 0.0   # earliest time bypass can re-trigger
+        _retry_bypass    = False  # one free re-trigger after failed bypass
+        _last_search_vlm = 0.0   # last time a search-guidance query was sent
 
         while self.running:
             t0  = time.time()
@@ -489,9 +344,13 @@ class SmartNavigator:
                         print(f"[NAV] Descriptive query '{pend}' → YOLO class '{base_q}', VLM verifies full description")
                 else:
                     self._tracker.reset()
-                self._vlm.verified    = False
-                self._vlm.search_hint = None
-                self._mppi.reset()
+                self._vlm.verified        = False
+                self._vlm.search_hint     = None
+                self._vlm.stuck_hint      = None
+                _pid_prev        = 0.0
+                _bypass_active   = False
+                _bypass_cooldown = 0.0
+                _retry_bypass    = False
                 _last_search_vlm = 0.0
 
             q     = self._active_q
@@ -554,63 +413,149 @@ class SmartNavigator:
             raw_lin, raw_ang = 0.0, 0.0
             self.distance = self.angle_deg = None
 
-            # Centre depth for emergency detection only
+            # 5-band horizontal depth scan — finds the widest gap for bypass direction
             dh, dw = depth.shape
-            d_C = float(np.median(depth[int(dh*0.3):int(dh*0.7),
-                                        int(dw*0.33):int(dw*0.66)]))
+            _strip = depth[int(dh*0.3):int(dh*0.8), :]
+            _bw    = dw // 5
+            d_bands = [float(np.median(_strip[:, i*_bw:(i+1)*_bw])) for i in range(5)]
+            # Aggregate for backward-compatible L/C/R names
+            d_L = min(d_bands[0], d_bands[1])
+            d_C = d_bands[2]
+            d_R = min(d_bands[3], d_bands[4])
+            # Repulsion field: each band pushes the robot away proportional to closeness
+            _thresh = 1.2
+            obs = 0.0
+            for _i, _d in enumerate(d_bands):
+                if _d < _thresh:
+                    _push = (_thresh - _d) / _thresh          # 0→1, stronger when closer
+                    _side = (_i - 2) / 2.0                    # -1=far-left … +1=far-right
+                    obs  -= _push * _side * 0.35              # push away from obstacle
+            obs = float(np.clip(obs, -1.0, 1.0))
 
-            if d_C < 0.5:
-                # Hard safety override — MPPI plan is stale after reversing
-                self._mppi.reset()
+            # Apply any pending stuck_hint from VLM to set bypass direction for retry
+            if _retry_bypass and self._vlm.stuck_hint is not None:
+                _bypass_dir = 1.0 if self._vlm.stuck_hint == "left" else -1.0
+                self._vlm.stuck_hint = None
+
+            # Start bypass when obstacle blocks path.
+            # _retry_bypass allows one re-trigger from any state after a failed bypass.
+            if (not _bypass_active
+                    and t0 >= _bypass_cooldown
+                    and (result.state in (TrackerState.TRACKING, TrackerState.PREDICTING)
+                         or _retry_bypass)
+                    and 0.6 <= d_C < 1.1):
+                _bypass_active = True
+                _bypass_until  = t0 + 3.0
+                if not _retry_bypass:
+                    # Pick the side with the widest gap from the 5-band scan
+                    left_gap  = min(d_bands[0], d_bands[1])
+                    right_gap = min(d_bands[3], d_bands[4])
+                    if abs(left_gap - right_gap) > 0.2:
+                        _bypass_dir = 1.0 if left_gap > right_gap else -1.0
+                    else:
+                        _bypass_dir = -1.0 if float(self._tracker._x[0]) >= 0 else 1.0
+                _retry_bypass = False
+                print(f"[NAV] Bypass → {'L' if _bypass_dir>0 else 'R'}  "
+                      f"bands={[f'{d:.1f}' for d in d_bands]}")
+
+            # Bypass ends when path clears or timer expires
+            _bypass_just_ended = False
+            if _bypass_active and (t0 >= _bypass_until or d_C >= 1.2):
+                path_cleared      = d_C >= 1.2
+                _bypass_active    = False
+                _bypass_just_ended = True
+                if path_cleared:
+                    _bypass_cooldown = t0 + 3.0
+                else:
+                    # Timer expired, still blocked — flip direction and retry once
+                    _bypass_dir      = -_bypass_dir
+                    _retry_bypass    = True
+                    _bypass_cooldown = t0 + 0.3   # tiny pause before retry
+                    self._vlm.submit(frame, q, mode="stuck")   # async, may arrive later
+                    print(f"[NAV] Bypass timed out, still blocked — retrying {'L' if _bypass_dir>0 else 'R'}")
+
+            if d_C < 0.6:
+                # Emergency backup — short cooldown + queue a bypass so arc fires right after
+                _bypass_active   = False
+                _bypass_cooldown = t0 + 0.3
+                _retry_bypass    = True
+                self._vlm.submit(frame, q, mode="stuck")   # async direction advice
                 raw_lin = -0.15
+                raw_ang = obs * 0.4                         # rotate while reversing
                 self.status = "Obstacle! Backing up…"
 
+            elif _bypass_active:
+                # Arc around obstacle; EKF keeps predicting where the target is
+                raw_ang = _bypass_dir * 0.40 + obs * 0.25
+                raw_lin = 0.13
+                self.distance  = result.distance
+                self.angle_deg = float(np.degrees(self._tracker._x[0]))
+                self.status = f"Going around… {'←' if _bypass_dir > 0 else '→'}"
+
             elif result.state in (TrackerState.TRACKING, TrackerState.PREDICTING):
+                norm_err = result.angle / (np.radians(FOV_H_DEG) / 2)
+                if _bypass_just_ended or _prev_state not in (
+                        TrackerState.TRACKING, TrackerState.PREDICTING):
+                    # First tracking frame after search or bypass — stale _pid_prev
+                    # would produce a huge derivative spike, and self.ang still carries
+                    # spin momentum from the search rotation.
+                    _pid_prev = norm_err
+                    self.ang  = 0.0
+                _bypass_active = False
                 self.distance  = result.distance
                 self.angle_deg = float(np.degrees(result.angle))
                 if result.distance <= ARRIVE_DIST:
-                    self._mppi.reset()
                     self.status = f"Arrived at '{q}' ({result.distance:.1f} m)"
                 else:
-                    raw_lin, raw_ang = self._mppi.step(depth, result.angle, result.distance)
+                    deriv     = float(np.clip((norm_err - _pid_prev) / dt, -4.0, 4.0))
+                    _pid_prev = norm_err
+                    raw_ang   = float(np.clip(
+                        -(KP * norm_err + KD * deriv) + obs * 0.7, -0.50, 0.50))
+                    slowdown  = max(0.1, 1.0 - abs(norm_err))
+                    raw_lin   = min(0.30, (result.distance - TARGET_DIST) * 0.3) * slowdown
                     self.status = f"→ '{q}'  {result.distance:.1f} m  {self.angle_deg:+.0f}°"
 
             elif result.state == TrackerState.SEARCHING:
-                self._mppi.reset()
+                _bypass_active = False
 
+                # Periodically ask VLM where the target is
                 if (t0 - _last_search_vlm) >= VLM_EVERY * 1.5 and not dets:
                     self._vlm.submit(frame, q, mode="search")
                     _last_search_vlm = t0
 
+                # Use VLM search hint if it matches the current query
                 vlm_dir = (self._vlm.search_hint
                            if self._vlm.search_hint_for == q else None)
 
                 if dets:
-                    raw_ang = 0.05 * result.search_direction
+                    raw_ang = 0.05 * result.search_direction + obs * 0.3
                     self.status = f"Possible '{q}' — verifying…"
                 elif vlm_dir == "left":
-                    raw_ang = 0.20
+                    raw_ang = 0.20 + obs * 0.3
                     self.status = f"VLM: '{q}' is left — turning ←"
                 elif vlm_dir == "right":
-                    raw_ang = -0.20
+                    raw_ang = -0.20 + obs * 0.3
                     self.status = f"VLM: '{q}' is right — turning →"
                 elif vlm_dir == "center":
                     raw_lin = 0.12
+                    raw_ang = obs * 0.3
                     self.status = f"VLM: '{q}' is ahead — moving forward"
                 else:
-                    raw_ang = 0.18 * result.search_direction
+                    raw_ang = 0.18 * result.search_direction + obs * 0.3
+                    if abs(obs) > 0.1:
+                        raw_lin = 0.10
                     self.status = f"Searching '{q}'…  {int(result.search_progress * 100)}%"
 
             elif result.state == TrackerState.LOST:
-                self._mppi.reset()
                 self.status = f"Lost '{q}' — set a new target"
             else:
                 self.status = f"Starting search for '{q}'…"
 
-            raw_ang = float(np.clip(raw_ang, -0.50, 0.50))
+            _prev_state = result.state
 
-            self.lin = self.lin * 0.5 + raw_lin * 0.5
-            self.ang = float(np.clip(self.ang * 0.55 + raw_ang * 0.45, -0.50, 0.50))
+            raw_ang  = float(np.clip(raw_ang, -0.50, 0.50))
+            self.lin = self.lin * 0.55 + raw_lin * 0.45
+            self.ang = float(np.clip(self.ang * 0.45 + raw_ang * 0.55, -0.50, 0.50))
             send_cmd(self.lin, self.ang)
 
             self.frame_b64 = jpg_b64(self._annotate(frame, dets, q, result))

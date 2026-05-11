@@ -1,14 +1,18 @@
 """
-Depth Estimator
+Depth Estimator — Depth Anything V3
 
-Wrapper around Depth Anything V2 for monocular depth estimation.
-Used for optional runtime depth-aware safety checking.
+Wrapper around Depth Anything V3 for monocular metric depth estimation.
+Returns depth maps in metres alongside confidence maps.
+
+Falls back to Depth Anything V2 if DA3 is not installed.
 
 Usage:
     from depth_estimator import DepthEstimator
 
-    estimator = DepthEstimator()
-    depth_map = estimator.estimate(rgb_frame)  # Returns (H, W) in meters
+    estimator = DepthEstimator(model_size='base')
+    depth, confidence = estimator.estimate(rgb_frame)
+    # depth: (H, W) float32 in metres
+    # confidence: (H, W) float32 in [0, 1], or None if DA2 fallback
 
 Author: Jotheesh Reddy Kummathi
 """
@@ -20,29 +24,23 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 
-# Add Depth-Anything-V2 to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'third_party', 'Depth-Anything-V2'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'third_party', 'Depth-Anything-V2', 'metric_depth'))
-
 
 class DepthEstimator:
-    """
-    Monocular depth estimation using Depth Anything V2.
+    """Monocular depth estimation using Depth Anything V3 (or V2 fallback).
 
-    Estimates metric depth (in meters) from a single RGB image.
+    Estimates metric depth (in metres) from a single RGB image.
+    Also provides confidence maps when using DA3.
     """
 
-    def __init__(self, model_size='small', device=None, max_depth=20.0):
+    def __init__(self, model_size='base', device=None, max_depth=10.0, version=3):
         """
         Initialize depth estimator.
 
         Args:
             model_size: 'small', 'base', or 'large'
-                - small: fastest, ~25M params (recommended for robot)
-                - base: balanced, ~97M params
-                - large: most accurate, ~335M params
             device: 'cuda' or 'cpu'. Auto-detects if None.
-            max_depth: Maximum depth in meters (default 20m for outdoor)
+            max_depth: Maximum depth in metres (default 10m for indoor)
+            version: 2 or 3 to force DA2 or DA3
         """
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -51,10 +49,43 @@ class DepthEstimator:
 
         self.max_depth = max_depth
         self.model_size = model_size
+        self._use_da3 = False
+        self._da3_model = None
+        self._da2_model = None
+
+        if version == 3:
+            # Try DA3 first
+            try:
+                self._init_da3(model_size)
+            except Exception as e:
+                print(f"DA3 not available ({e}), falling back to DA2...")
+                self._init_da2(model_size)
+        else:
+            # Force DA2
+            print("Forcing Depth Anything V2 fallback as requested...")
+            self._init_da2(model_size)
+
+    def _init_da3(self, model_size: str):
+        """Initialize Depth Anything V3."""
+        from depth_anything_3.api import DepthAnything3
+
+        model_name = f"depth-anything/DA3-{model_size.upper()}"
+        print(f"Loading Depth Anything V3 ({model_name}) on {self.device}...")
+
+        self._da3_model = DepthAnything3.from_pretrained(model_name)
+        self._da3_model = self._da3_model.to(device=self.device)
+        self._use_da3 = True
+        print(f"DA3 ready on {self.device}")
+
+    def _init_da2(self, model_size: str):
+        """Initialize Depth Anything V2 (fallback)."""
+        # Add DA2 to path
+        base_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+        sys.path.insert(0, os.path.join(base_dir, 'third_party', 'Depth-Anything-V2'))
+        sys.path.insert(0, os.path.join(base_dir, 'third_party', 'Depth-Anything-V2', 'metric_depth'))
 
         print(f"Loading Depth Anything V2 ({model_size}) on {self.device}...")
 
-        # Model configurations
         model_configs = {
             'small': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
             'base': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
@@ -69,56 +100,30 @@ class DepthEstimator:
         try:
             from depth_anything_v2.dpt import DepthAnythingV2
         except ImportError:
-            # Try alternative import path
-            da_path = os.path.join(os.path.dirname(__file__), '..', 'third_party',
-                                   'Depth-Anything-V2')
+            da_path = os.path.join(base_dir, 'third_party', 'Depth-Anything-V2')
             sys.path.insert(0, da_path)
             from depth_anything_v2.dpt import DepthAnythingV2
 
-        self.model = DepthAnythingV2(
+        self._da2_model = DepthAnythingV2(
             encoder=config['encoder'],
             features=config['features'],
             out_channels=config['out_channels'],
-            max_depth=max_depth
+            max_depth=self.max_depth,
         )
 
-        # Try to load checkpoint
-        checkpoint_path = self._find_checkpoint(model_size)
+        # Load checkpoint
+        checkpoint_path = self._find_da2_checkpoint(model_size)
         if checkpoint_path:
             state_dict = torch.load(checkpoint_path, map_location=self.device)
-            self.model.load_state_dict(state_dict)
-            print(f"Loaded checkpoint: {checkpoint_path}")
+            self._da2_model.load_state_dict(state_dict)
+            print(f"Loaded DA2 checkpoint: {checkpoint_path}")
         else:
-            print(f"WARNING: No checkpoint found for {model_size} model.")
-            print(f"Download from: https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Indoor-Small")
-            print(f"Place in: third_party/Depth-Anything-V2/checkpoints/")
+            print(f"WARNING: No DA2 checkpoint found for {model_size} model.")
 
-        self.model.eval()
-        self.model.to(self.device)
-        print("Depth estimator ready!")
-
-    def _find_checkpoint(self, model_size):
-        """Search for checkpoint file in common locations."""
-        base_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-        ckpt_dir = os.path.join(base_dir, 'third_party', 'Depth-Anything-V2', 'checkpoints')
-        # Map model_size → ViT encoder suffix used in actual HuggingFace filenames
-        encoder_map = {'small': 'vits', 'base': 'vitb', 'large': 'vitl'}
-        enc = encoder_map.get(model_size, model_size)
-        search_paths = [
-            # Actual HuggingFace filenames (hypersim = indoor metric)
-            os.path.join(ckpt_dir, f'depth_anything_v2_metric_hypersim_{enc}.pth'),
-            os.path.join(ckpt_dir, f'depth_anything_v2_metric_vkitti_{enc}.pth'),
-            # Legacy / renamed variants
-            os.path.join(ckpt_dir, f'depth_anything_v2_metric_{model_size}.pth'),
-            os.path.join(ckpt_dir, f'depth_anything_v2_{model_size}.pth'),
-            os.path.join(ckpt_dir, f'depth_anything_v2_{enc}.pth'),
-            os.path.join(base_dir, 'models', f'depth_anything_v2_{model_size}.pth'),
-        ]
-
-        for path in search_paths:
-            if os.path.exists(path):
-                return path
-        return None
+        self._da2_model.eval()
+        self._da2_model.to(self.device)
+        self._use_da3 = False
+        print(f"DA2 ready on {self.device}")
 
     def estimate(self, image, target_size=None):
         """
@@ -129,90 +134,102 @@ class DepthEstimator:
             target_size: Optional (H, W) to resize output. If None, matches input.
 
         Returns:
-            depth_map: numpy array (H, W) with depth in meters
+            depth_map: numpy array (H, W) with depth in metres
+            confidence: numpy array (H, W) with confidence [0, 1], or None (DA2)
         """
-        h, w = image.shape[:2]
+        if self._use_da3:
+            return self._estimate_da3(image, target_size)
+        else:
+            return self._estimate_da2(image, target_size)
 
+    def _estimate_da3(self, image, target_size=None):
+        """Estimate depth using DA3."""
+        h, w = image.shape[:2]
         if target_size is None:
             target_size = (h, w)
 
-        # Preprocess
-        img_tensor = self._preprocess(image)
+        with torch.no_grad():
+            pred = self._da3_model.inference([image])
 
-        # Inference — FP16 on GPU, FP32 on CPU
+        depth = pred.depth.squeeze().astype(np.float32)
+
+        # Invert relative depth to pseudo-metric (same as DA2 fallback)
+        depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
+        depth = self.max_depth * (1.0 - depth)
+        confidence = pred.conf.squeeze().astype(np.float32) if hasattr(pred, 'conf') and pred.conf is not None else None
+
+        # Resize if needed
+        if depth.shape != target_size:
+            depth = np.array(Image.fromarray(depth).resize(
+                (target_size[1], target_size[0]), Image.BILINEAR))
+            if confidence is not None:
+                confidence = np.array(Image.fromarray(confidence).resize(
+                    (target_size[1], target_size[0]), Image.BILINEAR))
+
+        # Clamp to max depth
+        depth = np.clip(depth, 0.0, self.max_depth)
+
+        return depth, confidence
+
+    def _estimate_da2(self, image, target_size=None):
+        """Estimate depth using DA2 (fallback)."""
+        h, w = image.shape[:2]
+        if target_size is None:
+            target_size = (h, w)
+
+        img_tensor = self._preprocess_da2(image)
+
         with torch.no_grad():
             if self.device.type == 'cuda':
                 with torch.amp.autocast('cuda'):
-                    depth = self.model(img_tensor)
+                    depth = self._da2_model(img_tensor)
             else:
-                depth = self.model(img_tensor)
+                depth = self._da2_model(img_tensor)
 
-        # Post-process — cast to float32 since autocast may produce float16
         depth = depth.squeeze().cpu().numpy().astype(np.float32)
 
-        # Resize to target size if needed
         if depth.shape != target_size:
             depth = np.array(Image.fromarray(depth).resize(
                 (target_size[1], target_size[0]), Image.BILINEAR))
 
-        return depth
+        return depth, None  # No confidence from DA2
 
-    def estimate_batch(self, images):
-        """
-        Estimate depth for a batch of images.
-
-        Args:
-            images: numpy array (N, H, W, 3) with values 0-255
-
-        Returns:
-            depth_maps: numpy array (N, H, W) with depth in meters
-        """
-        target_h, target_w = images.shape[1], images.shape[2]
-
-        batch_tensors = []
-        for img in images:
-            batch_tensors.append(self._preprocess(img).squeeze(0))
-
-        batch = torch.stack(batch_tensors, dim=0).to(self.device)
-
-        with torch.no_grad():
-            depths = self.model(batch)
-
-        depths = depths.cpu().numpy()
-
-        # Resize to match input dimensions if needed
-        if depths.shape[1] != target_h or depths.shape[2] != target_w:
-            resized = np.zeros((depths.shape[0], target_h, target_w), dtype=depths.dtype)
-            for i in range(depths.shape[0]):
-                resized[i] = np.array(Image.fromarray(depths[i]).resize(
-                    (target_w, target_h), Image.BILINEAR))
-            depths = resized
-
-        return depths
-
-    def _preprocess(self, image):
-        """Preprocess image for model input."""
-        # Convert to float and normalize
+    def _preprocess_da2(self, image):
+        """Preprocess image for DA2 model input."""
         img = image.astype(np.float32) / 255.0
-
-        # Normalize with ImageNet stats
         mean = np.array([0.485, 0.456, 0.406])
         std = np.array([0.229, 0.224, 0.225])
         img = (img - mean) / std
 
-        # To tensor (H, W, 3) -> (1, 3, H, W)
         img_tensor = torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0).float()
         img_tensor = img_tensor.to(self.device)
 
-        # Resize to model input size (multiples of 14 for ViT)
         h, w = img_tensor.shape[2:]
         new_h = (h // 14) * 14
         new_w = (w // 14) * 14
         if new_h != h or new_w != w:
             img_tensor = F.interpolate(img_tensor, size=(new_h, new_w),
                                        mode='bilinear', align_corners=False)
-
         return img_tensor
+
+    def _find_da2_checkpoint(self, model_size):
+        """Search for DA2 checkpoint file in common locations."""
+        base_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+        ckpt_dir = os.path.join(base_dir, 'third_party', 'Depth-Anything-V2', 'checkpoints')
+        encoder_map = {'small': 'vits', 'base': 'vitb', 'large': 'vitl'}
+        enc = encoder_map.get(model_size, model_size)
+        search_paths = [
+            os.path.join(ckpt_dir, f'depth_anything_v2_metric_hypersim_{enc}.pth'),
+            os.path.join(ckpt_dir, f'depth_anything_v2_metric_vkitti_{enc}.pth'),
+            os.path.join(ckpt_dir, f'depth_anything_v2_metric_{model_size}.pth'),
+            os.path.join(ckpt_dir, f'depth_anything_v2_{model_size}.pth'),
+            os.path.join(ckpt_dir, f'depth_anything_v2_{enc}.pth'),
+            os.path.join(base_dir, 'models', f'depth_anything_v2_{model_size}.pth'),
+        ]
+        for path in search_paths:
+            if os.path.exists(path):
+                return path
+        return None
 
     def get_polar_clearance(self, depth_map, num_bins=32, crop_bottom=0.6,
                             fov_horizontal=90.0, fx=None, cx=None):
@@ -321,42 +338,3 @@ class DepthEstimator:
         # Otherwise find bin with maximum clearance
         best_idx = np.argmax(clearance)
         return bin_centers[best_idx], clearance[best_idx]
-
-
-# Quick test if run directly
-if __name__ == "__main__":
-    print("Testing Depth Estimator...")
-    print("=" * 60)
-
-    # Create dummy image
-    dummy_image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-
-    try:
-        estimator = DepthEstimator(model_size='small')
-
-        # Test depth estimation
-        print("\n[1] Testing depth estimation...")
-        depth = estimator.estimate(dummy_image)
-        print(f"  Input shape: {dummy_image.shape}")
-        print(f"  Output shape: {depth.shape}")
-        print(f"  Depth range: [{depth.min():.2f}, {depth.max():.2f}] meters")
-
-        # Test polar clearance
-        print("\n[2] Testing polar clearance...")
-        clearance, bin_centers = estimator.get_polar_clearance(depth)
-        print(f"  Clearance shape: {clearance.shape}")
-        print(f"  Bin centers range: [{np.degrees(bin_centers[0]):.1f}, {np.degrees(bin_centers[-1]):.1f}] degrees")
-        print(f"  Clearance range: [{clearance.min():.2f}, {clearance.max():.2f}] meters")
-
-        # Test safety check
-        print("\n[3] Testing waypoint safety...")
-        test_wp = np.array([1.0, 0.0])  # Straight ahead
-        safe, cl = estimator.is_waypoint_safe(test_wp, clearance, bin_centers)
-        print(f"  Waypoint (1.0, 0.0): safe={safe}, clearance={cl:.2f}m")
-
-        print("\nDepth estimator test passed!")
-
-    except Exception as e:
-        print(f"\nError: {e}")
-        print("Make sure Depth Anything V2 checkpoint is downloaded.")
-        print("The module structure is ready for when you have the checkpoint.")

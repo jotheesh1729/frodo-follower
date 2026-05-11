@@ -5,6 +5,11 @@ numpy<2
 opencv-python-headless>=4.9
 Pillow>=10.0
 ultralytics>=8.0
+scipy>=1.10
+
+# Depth Anything V3 (install from git if available)
+# pip install -e git+https://github.com/DepthAnything/Depth-Anything-3.git#egg=depth-anything-3
+# Falls back to DA2 (third_party/Depth-Anything-V2) if not installed
 
 # SDK server
 fastapi==0.111.1

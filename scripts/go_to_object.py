@@ -308,7 +308,7 @@ def main():
             mppi_lin, mppi_ang, mppi_debug = mppi.plan(depth, goal_direction_rad=goal_direction)
 
             # If target is very close, slow down / stop
-            if target_distance is not None and target_distance < 0.8:
+            if target_distance is not None and target_distance < 1.2:
                 mppi_lin = 0.0
                 mppi_ang = 0.0
                 status = "ARRIVED"

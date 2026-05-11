@@ -6,7 +6,7 @@ sdk:
 
 perception:
   yolo_model: "yolo26m.pt"
-  yolo_confidence: 0.2
+  yolo_confidence: 0.45
   yolo_device: "auto"        # auto, cuda, cpu
   depth_model: "base"        # small, base, large
   depth_max: 10.0
@@ -18,12 +18,22 @@ planning:
   mppi_dt: 0.15
 
 control:
-  max_linear: 0.30
+  max_linear: 0.35
   max_angular: 0.45
-  steer_gain: 0.25
-  arrival_distance: 1.2   # stop this far from target (metres)
-  arrival_bbox_frac: 0.55 # also stop if target bbox fills >55% of frame height
-  slowdown_distance: 2.0
+  steer_kp: 0.30              # PID proportional gain
+  steer_ki: 0.02              # PID integral gain
+  steer_kd: 0.08              # PID derivative gain
+  arrival_distance: 1.2       # stop this far from target (metres)
+  arrival_bbox_frac: 0.42     # also stop if target bbox fills >42% of frame height
+  slowdown_distance: 2.5
+
+tracker:
+  coast_timeout: 4.0          # seconds in PREDICTING before SEARCHING
+  search_timeout: 30.0        # seconds searching before LOST
+  reid_threshold: 0.3         # minimum re-ID score to accept a candidate
+  process_noise: 0.1          # EKF process noise
+  measurement_noise_angle: 0.05
+  measurement_noise_distance: 0.3
 
 camera:
   fov_horizontal: 90.0

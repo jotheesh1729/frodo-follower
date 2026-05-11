@@ -90,7 +90,7 @@ cd frodo-follower
 
 ```bash
 pip install torch torchvision
-pip install ultralytics transformers qwen-vl-utils
+pip install ultralytics transformers qwen-vl-utils timm
 pip install flask opencv-python pillow requests numpy
 ```
 
@@ -146,3 +146,4 @@ Based on [frodo-ai](https://github.com/tarunkumarnyu/frodo-ai) by [Tarun Kumar](
 ## License
 
 MIT
+

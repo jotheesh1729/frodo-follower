@@ -259,6 +259,7 @@ class PersonFollower:
         KP, KD = 0.28, 0.15
         _prev  = 0.0
 
+        _prev_state      = None
         _bypass_active   = False
         _bypass_dir      = 1.0
         _bypass_until    = 0.0
@@ -395,8 +396,10 @@ class PersonFollower:
 
                 elif result.state in (TrackerState.TRACKING, TrackerState.PREDICTING):
                     norm_err = result.angle / (np.radians(FOV_H_DEG) / 2)
-                    if _just_ended:
-                        _prev = norm_err
+                    if _just_ended or _prev_state not in (
+                            TrackerState.TRACKING, TrackerState.PREDICTING):
+                        _prev     = norm_err
+                        self.ang  = 0.0
                     deriv    = float(np.clip((norm_err - _prev) / dt, -4.0, 4.0))
                     _prev    = norm_err
                     raw_ang  = float(np.clip(-(KP * norm_err + KD * deriv) + obs * 0.7, -0.50, 0.50))
@@ -432,6 +435,8 @@ class PersonFollower:
                 elif result.state == TrackerState.LOST:
                     self.locked = False
                     self.status = "Person lost — click to re-lock"
+
+            _prev_state = result.state
 
             raw_ang  = float(np.clip(raw_ang, -0.50, 0.50))
             self.lin = self.lin * 0.55 + raw_lin * 0.45

@@ -346,7 +346,7 @@ class PersonFollower:
                              or _retry_bypass)
                         and 0.6 <= d_C < 1.1):
                     _bypass_active = True
-                    _bypass_until  = t0 + 3.0
+                    _bypass_until  = t0 + 3.5
                     if not _retry_bypass:
                         # Prefer VLM direction if fresh, else fall back to depth asymmetry
                         vlm_stuck = self._vlm.stuck_dir
@@ -373,21 +373,22 @@ class PersonFollower:
                         _bypass_cooldown = t0 + 0.3
 
                 if d_C < 0.6:
-                    # Too close — back up and immediately queue a bypass attempt.
-                    # Ask VLM which way to go so bypass direction is informed.
+                    # Emergency backup — pick gap direction now and turn while reversing
                     _bypass_active   = False
-                    _bypass_cooldown = t0 + 0.3   # short: let bypass fire right after
+                    _bypass_cooldown = t0 + 0.3
                     _retry_bypass    = True
+                    if abs(d_L - d_R) > 0.15:
+                        _bypass_dir = 1.0 if d_L >= d_R else -1.0
                     if (t0 - _last_stuck_vlm) >= 4.0:
                         self._vlm.submit(frame, mode="stuck")
                         _last_stuck_vlm = t0
                     raw_lin = -0.15
-                    raw_ang = obs * 0.4            # rotate while reversing
+                    raw_ang = _bypass_dir * 0.45   # decisive turn while reversing
                     self.status = "Obstacle! Backing up…"
 
                 elif _bypass_active:
-                    raw_ang = _bypass_dir * 0.40 + obs * 0.25
-                    raw_lin = 0.13
+                    raw_ang = _bypass_dir * 0.45 + obs * 0.20
+                    raw_lin = 0.10
                     self.status = f"Going around… {'←' if _bypass_dir > 0 else '→'}"
 
                 elif result.state in (TrackerState.TRACKING, TrackerState.PREDICTING):

@@ -58,7 +58,7 @@ python3 scripts/person_follower.py --vlm-model internvl
 
 **VLM** — A vision-language model (Qwen2-VL-2B or InternVL2-2B) runs in a background thread. It verifies YOLO detections against descriptive queries, guides the search rotation when the target is lost, and advises LEFT/RIGHT when the robot is stuck behind an obstacle. Switch models with `--vlm-model qwen|internvl` at startup.
 
-**Control** — PD controller on bearing error with derivative clamping. Obstacle avoidance uses a 5-band depth scan across the forward view; the widest gap determines the bypass arc direction. Emergency backup triggers below 0.6 m and immediately queues a bypass arc on recovery.
+**Control** — PD controller on bearing error (`KP=0.25, KD=0.08`) with derivative clamping. Obstacle avoidance uses a 5-band depth scan across the forward view; the widest gap determines the bypass arc direction. Emergency backup triggers below 0.6 m — the robot turns toward the wider gap while reversing, then arcs around the obstacle at 0.45 rad/s for 3.5 s.
 
 ## Architecture
 

@@ -477,7 +477,7 @@ class SmartNavigator:
                          or _retry_bypass)
                     and 0.6 <= d_C < 1.1):
                 _bypass_active = True
-                _bypass_until  = t0 + 3.0
+                _bypass_until  = t0 + 3.5
                 if not _retry_bypass:
                     left_gap  = min(d_bands[0], d_bands[1])
                     right_gap = min(d_bands[3], d_bands[4])
@@ -505,18 +505,22 @@ class SmartNavigator:
                     print(f"[NAV] Bypass timed out — retrying {'L' if _bypass_dir>0 else 'R'}")
 
             if d_C < 0.6:
-                # Emergency backup
+                # Emergency backup — pick gap direction now and turn while reversing
                 _bypass_active   = False
                 _bypass_cooldown = t0 + 0.3
                 _retry_bypass    = True
+                left_gap  = min(d_bands[0], d_bands[1])
+                right_gap = min(d_bands[3], d_bands[4])
+                if abs(left_gap - right_gap) > 0.15:
+                    _bypass_dir = 1.0 if left_gap > right_gap else -1.0
                 self._vlm.submit(frame, self._active_vlm_q, mode="stuck")
                 raw_lin = -0.15
-                raw_ang = obs * 0.4
+                raw_ang = _bypass_dir * 0.45   # decisive turn while reversing
                 self.status = "Obstacle! Backing up…"
 
             elif _bypass_active:
-                raw_ang = _bypass_dir * 0.40 + obs * 0.25
-                raw_lin = 0.13
+                raw_ang = _bypass_dir * 0.45 + obs * 0.20
+                raw_lin = 0.10
                 self.distance  = result.distance
                 self.angle_deg = float(np.degrees(self._tracker._x[0]))
                 self.status = f"Going around… {'←' if _bypass_dir > 0 else '→'}"

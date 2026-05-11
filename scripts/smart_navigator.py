@@ -210,7 +210,7 @@ class MPPIController:
         Compute optimal (v, w) for this timestep.
 
         depth_np:     H×W float32 depth map in metres
-        target_angle: EKF bearing to target, radians  (+ve = left)
+        target_angle: EKF bearing to target, radians  (+ve = camera-right, same as pixel_to_angle)
         target_dist:  EKF range to target, metres
 
         Returns (v_cmd, w_cmd) as Python floats.
@@ -246,9 +246,11 @@ class MPPIController:
         th = torch.zeros(N, device=dev)
         costs = torch.zeros(N, device=dev)
 
-        # Target position in ego frame (held fixed over horizon — valid for 3 s)
+        # Target position in ego frame (held fixed over horizon — valid for 3 s).
+        # pixel_to_angle returns +ve for camera-right, but simulation uses standard
+        # math where +y = left, so we negate the lateral component.
         tx = float(target_dist * np.cos(target_angle))
-        ty = float(target_dist * np.sin(target_angle))
+        ty = float(-target_dist * np.sin(target_angle))
 
         for t in range(T):
             v  = V[:, t, 0]
@@ -262,10 +264,12 @@ class MPPIController:
             # Only penalise waypoints in front of the camera
             forward = (x > 0.15).float()
 
-            # Project waypoint into depth image column
+            # Project waypoint into depth image column.
+            # Standard math: +y = left, so rightward paths have bear_wp < 0.
+            # Image convention: right = px > dw/2, so negate to match.
             bear_wp = torch.atan2(y, x)                          # horiz bearing
             dist_wp = torch.hypot(x, y)                          # range to waypoint
-            px = (dw / 2.0 + bear_wp * focal).long().clamp_(0, dw - 1)
+            px = (dw / 2.0 - bear_wp * focal).long().clamp_(0, dw - 1)
             d_at = depth_col[px]                                  # obstacle depth there
 
             # Collision: obstacle is closer than the waypoint

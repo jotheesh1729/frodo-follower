@@ -173,22 +173,22 @@ class MPPIController:
     """
 
     N       = 512    # trajectory samples
-    T       = 10     # horizon steps
-    DT      = 0.10   # seconds per step  →  1.0 s total horizon (reactive for moving targets)
+    T       = 15     # horizon steps
+    DT      = 0.10   # seconds per step  →  1.5 s total horizon
 
-    SIGMA_V = 0.10   # linear velocity perturbation std  (m/s)
-    SIGMA_W = 0.18   # angular velocity perturbation std (rad/s) — tight to avoid wild swings
-    LAM     = 2.0    # MPPI temperature — high = smooth weighted average, not greedy
+    SIGMA_V = 0.15   # linear velocity perturbation std  (m/s)
+    SIGMA_W = 0.25   # angular velocity perturbation std (rad/s)
+    LAM     = 0.8    # MPPI temperature — low enough to commit, high enough not to be jerky
 
     # Cost weights
     W_OBS_HIT   = 60.0    # base cost when trajectory hits an obstacle
     W_OBS_DEPTH = 25.0    # extra cost per metre of penetration into obstacle
     W_EMERGENCY = 300.0   # cost for any waypoint within 0.45 m of an obstacle
-    W_GOAL_BEAR =  4.0    # terminal bearing error cost
-    W_GOAL_DIST =  1.5    # terminal distance-to-goal cost (light — target is moving)
-    W_RUN_BEAR  =  0.4    # per-step bearing cost — prevents "swing wide then correct" plans
+    W_GOAL_BEAR =  6.0    # terminal bearing error cost
+    W_GOAL_DIST =  4.0    # terminal distance-to-goal cost — drives forward motion
+    W_RUN_BEAR  =  0.3    # per-step bearing cost — prevents "swing wide then correct" plans
     W_EFFORT_V  =  0.05   # linear velocity effort regularisation
-    W_EFFORT_W  =  0.15   # angular velocity effort regularisation — penalise sharp turns
+    W_EFFORT_W  =  0.08   # angular velocity effort regularisation
 
     def __init__(self, fov_h_deg: float = 90.0):
         self.fov    = np.radians(fov_h_deg)

@@ -26,7 +26,7 @@ from depth_estimator import DepthEstimator
 SDK_URL     = "http://localhost:8000"
 FOV_H_DEG   = 90.0
 CONF_LOW    = 0.35
-TARGET_DIST = 2.0   # metres — stop at this distance from the person
+TARGET_DIST = 2.5   # metres — stop at this distance from the person
 
 
 def send_cmd(linear, angular):
@@ -404,10 +404,18 @@ class PersonFollower:
                     raw_ang  = float(np.clip(-(KP * norm_err + KD * deriv) + obs * 0.30, -0.40, 0.40))
                     slowdown = max(0.1, 1.0 - abs(norm_err))
                     dist     = result.distance
-                    if dist <= TARGET_DIST:
+                    if dist < TARGET_DIST - 0.4:
+                        # Overshot — back up gently, clear linear EMA momentum
+                        raw_lin  = -0.08
+                        self.lin = 0.0
+                        self.status = f"Too close — backing up ({dist:.1f} m)"
+                    elif dist <= TARGET_DIST:
+                        # At stop distance — hard stop to clear EMA coasting
+                        raw_lin  = 0.0
+                        self.lin = 0.0
                         self.status = f"Following — holding {dist:.1f} m"
                     else:
-                        raw_lin = min(0.30, (dist - TARGET_DIST) * 0.3) * slowdown
+                        raw_lin = min(0.25, (dist - TARGET_DIST) * 0.3) * slowdown
                         self.status = f"Following → {dist:.1f} m  {np.degrees(result.angle):+.0f}°"
 
                 elif result.state == TrackerState.SEARCHING:

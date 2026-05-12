@@ -1,4 +1,6 @@
 {
+  "venvPath": ".",
+  "venv": "venv",
   "extraPaths": [
     "frodo_ai/perception",
     "third_party/Depth-Anything-V2",

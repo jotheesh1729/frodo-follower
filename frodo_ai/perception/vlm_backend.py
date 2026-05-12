@@ -74,13 +74,12 @@ class InternVL2Backend(VLMBackend):
     def infer(self, image: Image.Image, prompt: str, max_tokens: int) -> str:
         import torch
         import torchvision.transforms as T
-        from torchvision.transforms.functional import InterpolationMode
 
         _MEAN = (0.485, 0.456, 0.406)
         _STD  = (0.229, 0.224, 0.225)
         tf = T.Compose([
             T.Lambda(lambda img: img.convert("RGB")),
-            T.Resize((448, 448), interpolation=InterpolationMode.BICUBIC),
+            T.Resize((448, 448), interpolation=T.InterpolationMode.BICUBIC),
             T.ToTensor(),
             T.Normalize(mean=_MEAN, std=_STD),
         ])

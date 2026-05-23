@@ -4,7 +4,16 @@ Two autonomous navigation modes for the [FrodoBots Earth Rover](https://frodobot
 
 ## Demo
 
-<!-- demo video placeholder -->
+https://github.com/jotheesh1729/frodo-follower/assets/demos/IMG_9387.MOV
+
+https://github.com/jotheesh1729/frodo-follower/assets/demos/IMG_9388.MOV
+
+https://github.com/jotheesh1729/frodo-follower/assets/demos/2026-05-11%2022-53-26.mkv
+
+| | |
+|---|---|
+| ![](assets/demos/IMG_9390.JPG) | ![](assets/demos/IMG_9391.JPG) |
+| ![](assets/demos/IMG_9392.JPG) | ![Architecture](assets/architecture.png) |
 
 ## Modes
 
@@ -35,7 +44,7 @@ python3 scripts/smart_navigator.py --vlm-model internvl
 
 ### Person Follower
 
-Click a person in the camera feed to lock on. The robot follows them and stops at a set distance. If the person is lost at close range, the robot backs up briefly and tries to re-acquire before giving up.
+Click a person in the camera feed to lock on. The robot follows them and stops at 2.5 m so the full person stays in frame. If the person is lost at close range, the robot backs up briefly and tries to re-acquire before giving up.
 
 Run:
 ```bash
@@ -48,19 +57,32 @@ To use InternVL2-2B:
 python3 scripts/person_follower.py --vlm-model internvl
 ```
 
+## Architecture
+
+![System architecture](assets/architecture.png)
+
+Solid arrows are per-frame data paths (~10 Hz). Dashed orange arrows are low-frequency asynchronous VLM paths (~0.3 Hz).
+
 ## How it works
+
+On the RTX 5070 Ti test setup, YOLO-World plus Depth Anything V2 plus the tracker and controller together typically run **about 8–12 FPS** (the VLM runs asynchronously and does not affect throughput).
 
 **Detection** — YOLO-World (`yolov8s-worldv2.pt`) handles open-vocabulary detection. For descriptive queries like "person with brown shirt", the noun is extracted for YOLO and the full description is passed to the VLM for verification.
 
-**Depth** — Depth Anything V2 (metric, indoor) runs every frame producing per-pixel depth in metres. Distance to the target is sampled from the lower portion of the bounding box (feet/legs region) which gives ground-plane distance rather than line-of-sight to the torso.
+**Depth** — Depth Anything V2 (metric, indoor) runs every frame producing per-pixel depth in metres. Distance to the target is sampled from the lower 25% of the bounding box (feet/legs region) which gives ground-plane distance rather than line-of-sight to the torso.
 
 **Tracking** — An EKF with state `[angle, angular_velocity, distance, approach_velocity]` maintains a smooth estimate across frames. Appearance-based re-ID (HSV histogram) handles occlusions and re-acquisition.
 
-**VLM** — A vision-language model (Qwen2-VL-2B or InternVL2-2B) runs in a background thread. It verifies YOLO detections against descriptive queries, guides the search rotation when the target is lost, and advises LEFT/RIGHT when the robot is stuck behind an obstacle. Switch models with `--vlm-model qwen|internvl` at startup.
+**VLM** — A vision-language model runs in a background thread at ~0.3 Hz. It verifies YOLO detections against descriptive queries, guides the search rotation when the target is lost, and advises LEFT/RIGHT when the robot is stuck behind an obstacle. Two backends are supported:
+
+| Model | Flag | VRAM |
+|---|---|---|
+| Qwen2-VL-2B *(default)* | `--vlm-model qwen` | ~3.8 GB |
+| InternVL2-2B | `--vlm-model internvl` | ~4.4 GB |
 
 **Control** — PD controller on bearing error (`KP=0.25, KD=0.08`) with derivative clamping. Obstacle avoidance uses a 5-band depth scan across the forward view; the widest gap determines the bypass arc direction. Emergency backup triggers below 0.6 m — the robot turns toward the wider gap while reversing, then arcs around the obstacle at 0.45 rad/s for 3.5 s.
 
-## Architecture
+## File layout
 
 ```
 scripts/
@@ -75,6 +97,10 @@ frodo_ai/perception/
 web/
     smart_nav.html          UI for smart navigator
     follower.html           UI for person follower
+
+assets/
+    architecture.png        System architecture diagram
+    demos/                  Demo videos and photos
 ```
 
 ## Setup
@@ -118,10 +144,12 @@ Qwen2-VL-2B — downloads automatically on first run via Hugging Face.
 
 InternVL2-2B (optional, for `--vlm-model internvl`) — pre-download before first run (4.4 GB):
 ```bash
-hf download OpenGVLab/InternVL2-2B
+huggingface-cli download OpenGVLab/InternVL2-2B
 ```
 
-**4. Start the SDK**
+**4. Start the Earth Rovers SDK**
+
+The `earth-rovers-sdk/` bridge mirrors the front camera over HTTP (`GET /v2/front`) and accepts drive commands (`POST /control-legacy` with `linear`/`angular` in −1…1). Both scripts default to `http://localhost:8000`.
 
 ```bash
 cd earth-rovers-sdk && hypercorn main:app --reload
@@ -146,4 +174,3 @@ Based on [frodo-ai](https://github.com/tarunkumarnyu/frodo-ai) by [Tarun Kumar](
 ## License
 
 MIT
-

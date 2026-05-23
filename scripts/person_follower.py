@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Person Follower — YOLO-World + VLM search guidance + EKF tracker + DA3 depth
+# Person Follower — YOLO-World + VLM search guidance + EKF tracker + Depth Anything V2
 # Click a person in the web UI to lock on and follow.
 # Run:  python3 scripts/person_follower.py
 # UI:   http://localhost:5001

@@ -537,6 +537,7 @@ class SmartNavigator:
                 self.distance  = result.distance
                 self.angle_deg = float(np.degrees(result.angle))
                 if result.distance <= ARRIVE_DIST:
+                    self.lin = 0.0   # clear EMA momentum so robot stops cleanly
                     self.status = f"Arrived at '{q}' ({result.distance:.1f} m)"
                 else:
                     deriv     = float(np.clip((norm_err - _pid_prev) / dt, -2.0, 2.0))

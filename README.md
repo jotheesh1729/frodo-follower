@@ -4,16 +4,9 @@ Two autonomous navigation modes for the [FrodoBots Earth Rover](https://frodobot
 
 ## Demo
 
-https://github.com/jotheesh1729/frodo-follower/assets/demos/IMG_9387.MOV
+[▶ Watch demo video](assets/demos/IMG_9387.MOV)
 
-https://github.com/jotheesh1729/frodo-follower/assets/demos/IMG_9388.MOV
-
-https://github.com/jotheesh1729/frodo-follower/assets/demos/2026-05-11%2022-53-26.mkv
-
-| | |
-|---|---|
-| ![](assets/demos/IMG_9390.JPG) | ![](assets/demos/IMG_9391.JPG) |
-| ![](assets/demos/IMG_9392.JPG) | ![Architecture](assets/architecture.png) |
+![](assets/demos/IMG_9390.JPG)
 
 ## Modes
 
@@ -59,7 +52,7 @@ python3 scripts/person_follower.py --vlm-model internvl
 
 ## Architecture
 
-![System architecture](assets/architecture.png)
+![System architecture](assets/system.png)
 
 Solid arrows are per-frame data paths (~10 Hz). Dashed orange arrows are low-frequency asynchronous VLM paths (~0.3 Hz).
 
@@ -99,7 +92,7 @@ web/
     follower.html           UI for person follower
 
 assets/
-    architecture.png        System architecture diagram
+    system.png              System architecture diagram
     demos/                  Demo videos and photos
 ```
 

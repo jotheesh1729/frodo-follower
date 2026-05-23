@@ -6,7 +6,7 @@ Two autonomous navigation modes for the [FrodoBots Earth Rover](https://frodobot
 
 [▶ Watch demo video](assets/demos/IMG_9387.MOV)
 
-<img src="assets/demos/IMG_9390.JPG" width="480" height = "480"/>
+<img src="assets/demos/IMG_9390.JPG" width="480" height = "640"/>
 
 ## Modes
 

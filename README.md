@@ -4,7 +4,9 @@ Two autonomous navigation modes for the [FrodoBots Earth Rover](https://frodobot
 
 ## Demo
 
-[▶ Watch demo video](assets/demos/IMG_9387.MOV)
+<video src="assets/demos/IMG_9387.MOV" controls width="480"></video>
+<video src="assets/demos/IMG_9388.MOV" controls width="480"></video>
+<video src="assets/demos/IMG_9389.MOV" controls width="480"></video>
 
 <video src="assets/demos/IMG_9389.MOV" controls width="480"></video>
 

@@ -6,7 +6,7 @@ Two autonomous navigation modes for the [FrodoBots Earth Rover](https://frodobot
 
 [▶ Watch demo video](assets/demos/IMG_9387.MOV)
 
-![](assets/demos/IMG_9390.JPG)
+<img src="assets/demos/IMG_9390.JPG" width="480"/>
 
 ## Modes
 
@@ -52,7 +52,7 @@ python3 scripts/person_follower.py --vlm-model internvl
 
 ## Architecture
 
-![System architecture](assets/system.png)
+<img src="assets/system.png" width="720"/>
 
 Solid arrows are per-frame data paths (~10 Hz). Dashed orange arrows are low-frequency asynchronous VLM paths (~0.3 Hz).
 

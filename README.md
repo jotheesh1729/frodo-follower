@@ -4,19 +4,19 @@ Two autonomous navigation modes for the [FrodoBots Earth Rover](https://frodobot
 
 ## Demo
 
-GitHub strips `<video>` tags from rendered READMEs, so the clips below are GIFs (UI + robot side by side); full-length raw footage is linked underneath.
+<img src="assets/demos/IMG_9390_square.jpg" width="480" height="480"/>
 
-<img src="assets/demos/gifs/person.gif" width="480"/> <img src="assets/demos/gifs/chair.gif" width="480"/>
+GitHub strips `<video>` tags from rendered READMEs, so the clips below are GIFs; more videos are linked at the bottom.
 
-Person follower (left) and smart navigator driving to "go to the chair" (right).
+<img src="assets/demos/gifs/person_chair_demo.gif" width="480"/>
 
-<img src="assets/demos/gifs/obs.gif" width="480"/> <img src="assets/demos/gifs/person_obstacle.gif" width="480"/>
+Real robot navigating to a person / chair target.
 
-Five-band obstacle bypass (left) and person-following combined with obstacle avoidance (right).
+<img src="assets/demos/gifs/frodo_person_obstacle.gif" width="480"/>
 
-<img src="assets/demos/IMG_9390.JPG" width="480" height="640"/>
+Person following combined with obstacle avoidance.
 
-Full-length raw footage: [person_chair_demo.mkv](assets/demos/person_chair_demo.mkv) · [person_chair_demo2.MOV](assets/demos/person_chair_demo2.MOV) · [person_chair_demo3.MOV](assets/demos/person_chair_demo3.MOV) · [IMG_9389.MOV](assets/demos/IMG_9389.MOV)
+More videos: [person_chair_demo.mkv](assets/demos/person_chair_demo.mkv) · [person_chair_demo2.MOV](assets/demos/person_chair_demo2.MOV) · [person_chair_demo3.MOV](assets/demos/person_chair_demo3.MOV) · [IMG_9389.MOV](assets/demos/IMG_9389.MOV) · [frodo_chair.mp4](assets/demos/frodo_chair.mp4) · [frodo_obs.mp4](assets/demos/frodo_obs.mp4) · [frodo_person.mp4](assets/demos/frodo_person.mp4)
 
 ## Modes
 

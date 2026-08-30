@@ -4,11 +4,15 @@ Two autonomous navigation modes for the [FrodoBots Earth Rover](https://frodobot
 
 ## Demo
 
-<video src="assets/demos/IMG_9387.MOV" controls width="480"></video>
-<video src="assets/demos/IMG_9388.MOV" controls width="480"></video>
+<video src="assets/demos/person_chair_demo.mkv" controls width="480"></video>
+<video src="assets/demos/person_chair_demo2.MOV" controls width="480"></video>
+<video src="assets/demos/person_chair_demo3.MOV" controls width="480"></video>
 <video src="assets/demos/IMG_9389.MOV" controls width="480"></video>
 
-<video src="assets/demos/IMG_9389.MOV" controls width="480"></video>
+<video src="assets/demos/frodo_chair.mp4" controls width="480"></video>
+<video src="assets/demos/frodo_person.mp4" controls width="480"></video>
+<video src="assets/demos/frodo_obs.mp4" controls width="480"></video>
+<video src="assets/demos/frodo_person_obstacle.mp4" controls width="480"></video>
 
 <img src="assets/demos/IMG_9390.JPG" width="480" height = "640"/>
 

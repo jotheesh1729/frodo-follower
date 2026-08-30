@@ -190,11 +190,13 @@ class TargetTracker:
             self.state = TrackerState.TRACKING
             self._initialized = True
 
-            # Remember which side the target is on for search
+            # Remember which side the target is on for search.
+            # angle_meas > 0 means the target's pixel x is right of centre
+            # (see _pixel_to_angle), so the search should turn right (-1).
             if angle_meas > 0:
-                self._last_search_direction = 1.0
-            elif angle_meas < 0:
                 self._last_search_direction = -1.0
+            elif angle_meas < 0:
+                self._last_search_direction = 1.0
 
             return TrackerResult(
                 state=TrackerState.TRACKING,
@@ -239,7 +241,8 @@ class TargetTracker:
         if self.state != TrackerState.SEARCHING:
             self._search_start_time = now
             # Search in the direction of the last known target position
-            self._last_search_direction = 1.0 if self._x[0] > 0 else -1.0
+            # (same sign convention as above: positive angle => search right).
+            self._last_search_direction = -1.0 if self._x[0] > 0 else 1.0
         self.state = TrackerState.SEARCHING
 
         search_elapsed = now - self._search_start_time
